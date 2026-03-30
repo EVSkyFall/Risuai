@@ -542,15 +542,23 @@ export async function requestClaude(arg:RequestDataArgumentExtended):Promise<req
         "accept": "application/json",
     }
 
-    let betas:string[] = []
-
-    if(body.max_tokens > 8192){
-        betas.push('output-128k-2025-02-19')
+    // For reverse proxy and custom models, use Bearer auth instead of x-api-key
+    if (aiModel === 'reverse_proxy' || aiModel.startsWith('xcustom:::')) {
+        headers["Authorization"] = "Bearer " + apiKey
+        delete headers['anthropic-version']
     }
 
+    let betas:string[] = []
 
-    if(db.claude1HourCaching){
-        betas.push('extended-cache-ttl-2025-04-11')
+    // Skip Anthropic-specific beta headers for proxy/custom endpoints
+    if (aiModel !== 'reverse_proxy' && !aiModel.startsWith('xcustom:::')) {
+        if(body.max_tokens > 8192){
+            betas.push('output-128k-2025-02-19')
+        }
+
+        if(db.claude1HourCaching){
+            betas.push('extended-cache-ttl-2025-04-11')
+        }
     }
 
     if(betas.length > 0){
@@ -769,6 +777,13 @@ export async function requestClaude(arg:RequestDataArgumentExtended):Promise<req
             body: body,
             headers: headers
         })
+    }
+
+    // Strip trailing assistant messages (prefill) for proxy/custom endpoints like GitHub Copilot
+    if (aiModel === 'reverse_proxy' || aiModel.startsWith('xcustom:::')) {
+        while (body.messages?.length > 0 && body.messages[body.messages.length - 1]?.role === 'assistant') {
+            body.messages.pop()
+        }
     }
 
     return requestClaudeHTTP(replacerURL, headers, body, arg)
