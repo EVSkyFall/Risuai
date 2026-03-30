@@ -37,6 +37,9 @@ const SaveType = {
     REMOTE: 6,
     CHARACTER_WITHOUT_CHAT: 7,
     ROOT_COMPONENT: 8,
+    PLUGINS: 9,
+    LOADOUTS: 10,
+    PLUGIN_STORAGE: 11,
 };
 
 const savePath = path.join(process.cwd(), 'save');
@@ -234,6 +237,18 @@ async function decodeRisuSaveFormat(buf) {
             case SaveType.ROOT_COMPONENT: {
                 const comp = JSON.parse(block.content);
                 db[comp.key] = comp.data;
+                break;
+            }
+            case SaveType.PLUGINS: {
+                db.plugins = JSON.parse(block.content);
+                break;
+            }
+            case SaveType.LOADOUTS: {
+                db.loadouts = JSON.parse(block.content);
+                break;
+            }
+            case SaveType.PLUGIN_STORAGE: {
+                db.pluginStorage = JSON.parse(block.content);
                 break;
             }
             case SaveType.CONFIG:
