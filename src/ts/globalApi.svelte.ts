@@ -1734,12 +1734,9 @@ export async function fetchNative(url: string, arg: {
     if (useLocalNetworkRoute && !isTauri && !isNodeServer) {
         throw new Error(webLocalNetworkBlockedMessage)
     }
-    let throughProxy = (!isTauri) && (!isNodeServer) && (!db.usePlainFetch)
+    let throughProxy = (!isTauri) && (!db.usePlainFetch)
     if (useLocalNetworkRoute) {
-        if (isNodeServer) {
-            throughProxy = true
-        }
-        else if (isTauri) {
+        if (isTauri) {
             throughProxy = false
         }
     }
