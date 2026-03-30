@@ -765,6 +765,7 @@ const reverseProxyFunc = async (req, res, next) => {
     let originalResponse;
     try {
         // make request to original server
+        console.log(`[Proxy] ${req.method} ${urlParam}`);
         originalResponse = await fetch(urlParam, {
             method: req.method,
             headers: header,
