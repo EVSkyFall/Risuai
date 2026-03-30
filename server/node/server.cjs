@@ -9,6 +9,7 @@ const fs = require('fs/promises')
 const crypto = require('crypto')
 const rateLimit = require('express-rate-limit');
 const { WebSocketServer } = require('ws');
+try { app.use(require('compression')()); } catch(e) { /* compression not installed */ }
 app.use(express.static(path.join(process.cwd(), 'dist'), {index: false}));
 app.use(express.json({ limit: '100mb' }));
 app.use(express.raw({ type: 'application/octet-stream', limit: '100mb' }));
@@ -1481,6 +1482,27 @@ function setupProxyStreamWebSocket(server) {
         });
     });
 }
+
+// =============================================================================
+// Server-Stream CJS Pipeline Registration
+// =============================================================================
+try {
+    const chatEngine = require('./chatEngine.cjs');
+    chatEngine.registerChatRoutes(app, password);
+    console.log('[Server] Chat engine routes registered');
+} catch(e) { console.log('[Server] Chat engine not available:', e.message); }
+
+try {
+    const { registerArchiveRoutes } = require('./chatArchive.cjs');
+    registerArchiveRoutes(app, password);
+    console.log('[Archive] Archive routes registered');
+} catch(e) { console.log('[Server] Archive routes not available:', e.message); }
+
+try {
+    const { registerInlayRoutes } = require('./inlayServer.cjs');
+    registerInlayRoutes(app, password);
+    console.log('[Server] Inlay storage routes registered');
+} catch(e) { console.log('[Server] Inlay routes not available:', e.message); }
 
 async function startServer() {
     try {
