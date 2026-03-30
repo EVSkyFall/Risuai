@@ -774,7 +774,35 @@ export async function requestClaude(arg:RequestDataArgumentExtended):Promise<req
     return requestClaudeHTTP(replacerURL, headers, body, arg)
 }
 
-async function requestClaudeHTTP(replacerURL:string, headers:{[key:string]:string}, body:any, arg:RequestDataArgumentExtended):Promise<requestDataResponse> {
+function isCopilotURL(url: string): boolean {
+    return url.includes('githubcopilot.com') || url.includes('copilot')
+}
+
+let _copilotInteractionId: string | null = null
+function getCopilotInteractionId(): string {
+    if (!_copilotInteractionId) _copilotInteractionId = v4()
+    return _copilotInteractionId
+}
+
+function applyCopilotTaskHeaders(headers: { [key: string]: string }, url: string, taskId?: string, isContinuation = false): string | undefined {
+    if (!isCopilotURL(url)) return taskId
+    const id = taskId ?? v4()
+    headers['X-Request-Id'] = id
+    headers['X-Agent-Task-Id'] = id
+    headers['X-Interaction-Id'] = getCopilotInteractionId()
+    headers['X-Initiator'] = isContinuation ? 'agent' : 'user'
+    headers['OpenAI-Intent'] = 'conversation-panel'
+    headers['X-GitHub-Api-Version'] = '2025-05-01'
+    if (url.includes('/v1/messages')) {
+        headers['anthropic-beta'] = 'interleaved-thinking-2025-05-14,context-management-2025-06-27,advanced-tool-use-2025-11-20'
+    }
+    return id
+}
+
+async function requestClaudeHTTP(replacerURL:string, headers:{[key:string]:string}, body:any, arg:RequestDataArgumentExtended, copilotTaskId?: string):Promise<requestDataResponse> {
+
+    const isContinuation = copilotTaskId !== undefined
+    copilotTaskId = applyCopilotTaskHeaders(headers, replacerURL, copilotTaskId, isContinuation)
     
     if(arg.useStreaming){
         
@@ -1035,7 +1063,7 @@ async function requestClaudeHTTP(replacerURL:string, headers:{[key:string]:strin
         body.messages = messages
         body.stream = false
 
-        return requestClaudeHTTP(replacerURL, headers, body, arg)
+        return requestClaudeHTTP(replacerURL, headers, body, arg, copilotTaskId)
     }
     for(const content of contents){
         if(content.type === 'text'){

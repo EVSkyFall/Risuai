@@ -41,7 +41,7 @@ import {
     setUsingSw,
     checkCharOrder
 } from "./globalApi.svelte";
-import { isTauri } from "./platform";
+import { isTauri, isNodeServer } from "./platform";
 import { registerModelDynamic } from "./model/modellist";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { appDataDir, join } from "@tauri-apps/api/path";
@@ -203,11 +203,13 @@ export async function loadData() {
                     characterURLImport()
                 }
             }
-            LoadingStatusState.text = "Checking Unnecessary Files..."
-            try {
-                await cleanChunks()
-            } catch (error) {
-                console.error(error)
+            if (!isNodeServer) {
+                LoadingStatusState.text = "Checking Unnecessary Files..."
+                try {
+                    await cleanChunks()
+                } catch (error) {
+                    console.error(error)
+                }
             }
             LoadingStatusState.text = "Loading Plugins..."
             try {

@@ -17,6 +17,29 @@ import type { RequestDataArgumentExtended, requestDataResponse, StreamResponseCh
 import { applyParameters, setObjectValue } from '../shared'
 
 import type { Contents, OpenAIChatExtra, OpenAIChatFull, ResponseInputItem, ResponseItem, ResponseOutputItem, ToolCall } from './types'
+import { v4 } from "uuid"
+
+function isCopilotURL(url: string): boolean {
+    return url.includes('githubcopilot.com') || url.includes('copilot')
+}
+
+let _copilotInteractionId: string | null = null
+function getCopilotInteractionId(): string {
+    if (!_copilotInteractionId) _copilotInteractionId = v4()
+    return _copilotInteractionId
+}
+
+function applyCopilotTaskHeaders(headers: Record<string, string>, url: string, taskId?: string, isContinuation = false): string | undefined {
+    if (!isCopilotURL(url)) return taskId
+    const id = taskId ?? v4()
+    headers['X-Request-Id'] = id
+    headers['X-Agent-Task-Id'] = id
+    headers['X-Interaction-Id'] = getCopilotInteractionId()
+    headers['X-Initiator'] = isContinuation ? 'agent' : 'user'
+    headers['OpenAI-Intent'] = 'conversation-panel'
+    headers['X-GitHub-Api-Version'] = '2025-05-01'
+    return id
+}
 
 interface LocalNetworkRequestOptions {
     networkRoute?: 'auto' | 'local_network'
@@ -711,9 +734,13 @@ export async function requestHTTPOpenAI(
     body:any,
     headers:Record<string,string>,
     arg:RequestDataArgumentExtended,
-    networkOptions: LocalNetworkRequestOptions = {}
+    networkOptions: LocalNetworkRequestOptions = {},
+    copilotTaskId?: string
 ):Promise<requestDataResponse>{
-    
+
+    const isContinuation = copilotTaskId !== undefined
+    copilotTaskId = applyCopilotTaskHeaders(headers, replacerURL, copilotTaskId, isContinuation)
+
     const db = getDatabase()
     const res = await globalFetch(replacerURL, {
         body: body,
@@ -865,7 +892,7 @@ export async function requestHTTPOpenAI(
                 
                 do {
                     attempt++
-                    resRec = await requestHTTPOpenAI(replacerURL, body, headers, arg, networkOptions)
+                    resRec = await requestHTTPOpenAI(replacerURL, body, headers, arg, networkOptions, copilotTaskId)
                     
                     if (resRec.type != 'fail') {
                         break
@@ -1442,7 +1469,10 @@ function wrapToolStream(
                         }    
                         
                         body.messages = messages
-                        
+
+                        // Reapply Copilot task headers for tool continuation (same taskId)
+                        applyCopilotTaskHeaders(headers, replacerURL, copilotTaskId, true)
+
                         let resRec
                         let attempt = 0
                         let errorFlag = true

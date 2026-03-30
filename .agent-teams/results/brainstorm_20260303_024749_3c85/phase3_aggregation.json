@@ -1,0 +1,417 @@
+{
+  "ideas": {
+    "idea_p1_1": {
+      "average_scores": {
+        "feasibility": 8.67,
+        "ux-impact": 6.67,
+        "implementation-difficulty": 8.67
+      },
+      "total_score": 24.0,
+      "consensus": {
+        "feasibility": "High",
+        "ux-impact": "High",
+        "implementation-difficulty": "High"
+      }
+    },
+    "idea_p1_2": {
+      "average_scores": {
+        "feasibility": 9.0,
+        "ux-impact": 7.33,
+        "implementation-difficulty": 9.0
+      },
+      "total_score": 25.33,
+      "consensus": {
+        "feasibility": "High",
+        "ux-impact": "Medium",
+        "implementation-difficulty": "High"
+      }
+    },
+    "idea_p1_3": {
+      "average_scores": {
+        "feasibility": 10.0,
+        "ux-impact": 7.33,
+        "implementation-difficulty": 9.33
+      },
+      "total_score": 26.67,
+      "consensus": {
+        "feasibility": "High",
+        "ux-impact": "High",
+        "implementation-difficulty": "High"
+      }
+    },
+    "idea_p1_4": {
+      "average_scores": {
+        "feasibility": 6.0,
+        "ux-impact": 7.0,
+        "implementation-difficulty": 5.33
+      },
+      "total_score": 18.33,
+      "consensus": {
+        "feasibility": "Medium",
+        "ux-impact": "Medium",
+        "implementation-difficulty": "Medium"
+      }
+    },
+    "idea_p1_5": {
+      "average_scores": {
+        "feasibility": 6.0,
+        "ux-impact": 7.33,
+        "implementation-difficulty": 5.67
+      },
+      "total_score": 19.0,
+      "consensus": {
+        "feasibility": "Low",
+        "ux-impact": "Medium",
+        "implementation-difficulty": "Low"
+      }
+    },
+    "idea_p2_1": {
+      "average_scores": {
+        "feasibility": 2.67,
+        "ux-impact": 9.0,
+        "implementation-difficulty": 2.67
+      },
+      "total_score": 14.33,
+      "consensus": {
+        "feasibility": "High",
+        "ux-impact": "High",
+        "implementation-difficulty": "High"
+      }
+    },
+    "idea_p2_2": {
+      "average_scores": {
+        "feasibility": 2.33,
+        "ux-impact": 9.0,
+        "implementation-difficulty": 2.33
+      },
+      "total_score": 13.67,
+      "consensus": {
+        "feasibility": "High",
+        "ux-impact": "High",
+        "implementation-difficulty": "High"
+      }
+    },
+    "idea_p2_3": {
+      "average_scores": {
+        "feasibility": 3.0,
+        "ux-impact": 8.33,
+        "implementation-difficulty": 3.0
+      },
+      "total_score": 14.33,
+      "consensus": {
+        "feasibility": "High",
+        "ux-impact": "High",
+        "implementation-difficulty": "High"
+      }
+    },
+    "idea_p2_4": {
+      "average_scores": {
+        "feasibility": 2.67,
+        "ux-impact": 7.67,
+        "implementation-difficulty": 2.67
+      },
+      "total_score": 13.0,
+      "consensus": {
+        "feasibility": "Medium",
+        "ux-impact": "High",
+        "implementation-difficulty": "Medium"
+      }
+    },
+    "idea_p2_5": {
+      "average_scores": {
+        "feasibility": 2.33,
+        "ux-impact": 9.0,
+        "implementation-difficulty": 2.67
+      },
+      "total_score": 14.0,
+      "consensus": {
+        "feasibility": "High",
+        "ux-impact": "High",
+        "implementation-difficulty": "High"
+      }
+    },
+    "idea_p3_1": {
+      "average_scores": {
+        "feasibility": 9.67,
+        "ux-impact": 8.0,
+        "implementation-difficulty": 9.33
+      },
+      "total_score": 27.0,
+      "consensus": {
+        "feasibility": "High",
+        "ux-impact": "High",
+        "implementation-difficulty": "High"
+      }
+    },
+    "idea_p3_2": {
+      "average_scores": {
+        "feasibility": 4.0,
+        "ux-impact": 8.67,
+        "implementation-difficulty": 4.0
+      },
+      "total_score": 16.67,
+      "consensus": {
+        "feasibility": "High",
+        "ux-impact": "High",
+        "implementation-difficulty": "High"
+      }
+    },
+    "idea_p3_3": {
+      "average_scores": {
+        "feasibility": 10.0,
+        "ux-impact": 5.33,
+        "implementation-difficulty": 10.0
+      },
+      "total_score": 25.33,
+      "consensus": {
+        "feasibility": "High",
+        "ux-impact": "High",
+        "implementation-difficulty": "High"
+      }
+    },
+    "idea_p3_4": {
+      "average_scores": {
+        "feasibility": 10.0,
+        "ux-impact": 7.67,
+        "implementation-difficulty": 9.33
+      },
+      "total_score": 27.0,
+      "consensus": {
+        "feasibility": "High",
+        "ux-impact": "High",
+        "implementation-difficulty": "High"
+      }
+    },
+    "idea_p3_5": {
+      "average_scores": {
+        "feasibility": 7.0,
+        "ux-impact": 8.33,
+        "implementation-difficulty": 6.67
+      },
+      "total_score": 22.0,
+      "consensus": {
+        "feasibility": "High",
+        "ux-impact": "High",
+        "implementation-difficulty": "High"
+      }
+    },
+    "idea_p4_1": {
+      "average_scores": {
+        "feasibility": 8.33,
+        "ux-impact": 8.0,
+        "implementation-difficulty": 8.33
+      },
+      "total_score": 24.67,
+      "consensus": {
+        "feasibility": "High",
+        "ux-impact": "High",
+        "implementation-difficulty": "High"
+      }
+    },
+    "idea_p4_2": {
+      "average_scores": {
+        "feasibility": 10.0,
+        "ux-impact": 8.0,
+        "implementation-difficulty": 9.67
+      },
+      "total_score": 27.67,
+      "consensus": {
+        "feasibility": "High",
+        "ux-impact": "High",
+        "implementation-difficulty": "High"
+      }
+    },
+    "idea_p4_3": {
+      "average_scores": {
+        "feasibility": 5.67,
+        "ux-impact": 7.67,
+        "implementation-difficulty": 6.0
+      },
+      "total_score": 19.33,
+      "consensus": {
+        "feasibility": "High",
+        "ux-impact": "High",
+        "implementation-difficulty": "High"
+      }
+    },
+    "idea_p4_4": {
+      "average_scores": {
+        "feasibility": 7.67,
+        "ux-impact": 8.0,
+        "implementation-difficulty": 8.0
+      },
+      "total_score": 23.67,
+      "consensus": {
+        "feasibility": "High",
+        "ux-impact": "High",
+        "implementation-difficulty": "High"
+      }
+    },
+    "idea_p4_5": {
+      "average_scores": {
+        "feasibility": 9.33,
+        "ux-impact": 8.67,
+        "implementation-difficulty": 9.33
+      },
+      "total_score": 27.33,
+      "consensus": {
+        "feasibility": "High",
+        "ux-impact": "High",
+        "implementation-difficulty": "High"
+      }
+    },
+    "cross_p4_1": {
+      "average_scores": {
+        "feasibility": 8.33,
+        "ux-impact": 7.67,
+        "implementation-difficulty": 8.33
+      },
+      "total_score": 24.33,
+      "consensus": {
+        "feasibility": "High",
+        "ux-impact": "High",
+        "implementation-difficulty": "High"
+      }
+    },
+    "cross_p4_2": {
+      "average_scores": {
+        "feasibility": 5.33,
+        "ux-impact": 7.33,
+        "implementation-difficulty": 5.0
+      },
+      "total_score": 17.67,
+      "consensus": {
+        "feasibility": "Low",
+        "ux-impact": "Medium",
+        "implementation-difficulty": "Medium"
+      }
+    },
+    "cross_p4_3": {
+      "average_scores": {
+        "feasibility": 8.67,
+        "ux-impact": 8.0,
+        "implementation-difficulty": 9.0
+      },
+      "total_score": 25.67,
+      "consensus": {
+        "feasibility": "Medium",
+        "ux-impact": "Medium",
+        "implementation-difficulty": "High"
+      }
+    },
+    "cross_p4_4": {
+      "average_scores": {
+        "feasibility": 9.0,
+        "ux-impact": 7.67,
+        "implementation-difficulty": 9.0
+      },
+      "total_score": 25.67,
+      "consensus": {
+        "feasibility": "High",
+        "ux-impact": "High",
+        "implementation-difficulty": "High"
+      }
+    },
+    "cross_p5_1": {
+      "average_scores": {
+        "feasibility": 9.67,
+        "ux-impact": 8.67,
+        "implementation-difficulty": 9.0
+      },
+      "total_score": 27.33,
+      "consensus": {
+        "feasibility": "High",
+        "ux-impact": "High",
+        "implementation-difficulty": "High"
+      }
+    },
+    "cross_p5_2": {
+      "average_scores": {
+        "feasibility": 8.0,
+        "ux-impact": 8.33,
+        "implementation-difficulty": 7.67
+      },
+      "total_score": 24.0,
+      "consensus": {
+        "feasibility": "High",
+        "ux-impact": "High",
+        "implementation-difficulty": "High"
+      }
+    },
+    "cross_p5_3": {
+      "average_scores": {
+        "feasibility": 8.67,
+        "ux-impact": 9.33,
+        "implementation-difficulty": 8.0
+      },
+      "total_score": 26.0,
+      "consensus": {
+        "feasibility": "High",
+        "ux-impact": "High",
+        "implementation-difficulty": "High"
+      }
+    },
+    "cross_p5_4": {
+      "average_scores": {
+        "feasibility": 2.0,
+        "ux-impact": 9.0,
+        "implementation-difficulty": 2.0
+      },
+      "total_score": 13.0,
+      "consensus": {
+        "feasibility": "High",
+        "ux-impact": "High",
+        "implementation-difficulty": "High"
+      }
+    },
+    "cross_p3_1": {
+      "average_scores": {
+        "feasibility": 9.0,
+        "ux-impact": 8.67,
+        "implementation-difficulty": 8.33
+      },
+      "total_score": 26.0,
+      "consensus": {
+        "feasibility": "High",
+        "ux-impact": "High",
+        "implementation-difficulty": "High"
+      }
+    },
+    "cross_p3_2": {
+      "average_scores": {
+        "feasibility": 9.67,
+        "ux-impact": 8.33,
+        "implementation-difficulty": 9.0
+      },
+      "total_score": 27.0,
+      "consensus": {
+        "feasibility": "High",
+        "ux-impact": "High",
+        "implementation-difficulty": "High"
+      }
+    },
+    "cross_p3_3": {
+      "average_scores": {
+        "feasibility": 8.33,
+        "ux-impact": 7.67,
+        "implementation-difficulty": 8.33
+      },
+      "total_score": 24.33,
+      "consensus": {
+        "feasibility": "High",
+        "ux-impact": "High",
+        "implementation-difficulty": "High"
+      }
+    }
+  },
+  "top_picks": {
+    "idea_p3_4": 1,
+    "cross_p5_4": 1,
+    "cross_p5_3": 1
+  },
+  "wildcards": {
+    "cross_p5_3": 1,
+    "idea_p4_5": 1,
+    "idea_p1_4": 1
+  }
+}

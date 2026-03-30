@@ -1,0 +1,250 @@
+[
+  {
+    "id": "idea_p1_1",
+    "title": "Pure CSS :has() Override",
+    "core_concept": "Inject a unique class into the new Lightboard data output. Use RisuAI's global custom CSS feature with a selector like `body:has(.new-interaction) .lb-popover { display: block !important; opacity: 1; }` to force it open, completely bypassing the native JS Popover API.",
+    "perspective_reveal": "As a DOM Hacker, I know that native browser APIs can often be brute-forced into submission with CSS; if we control the markup and global styles, we don't need Svelte's permission to make things visible."
+  },
+  {
+    "id": "idea_p1_2",
+    "title": "The Autofocus Scroll Exploit",
+    "core_concept": "Embed a tiny, invisible `<input autofocus>` element inside the resulting Lightboard HTML. When Svelte attaches the new chat message to the DOM, the browser's native behavior will instantly scroll the user down to the newly created popover.",
+    "perspective_reveal": "Exploiting native browser accessibility features like `autofocus` gives us a free 'scroll to bottom' mechanism without needing to access RisuAI's internal `scrollToMessage` API."
+  },
+  {
+    "id": "idea_p1_3",
+    "title": "Persistent Checkbox Hack Replacement",
+    "core_concept": "Discard `<dialog popover>` entirely for the interaction result. Instead, render the new UI using the classic 'CSS Checkbox Hack' (`<input type=\"checkbox\" id=\"lbtoggle\" checked>`). Because it renders with `checked` already set, the 'popover' is open by default.",
+    "perspective_reveal": "Why fight with Svelte's lifecycle and modern Popover APIs when a decades-old CSS trick allows us to encode the 'open' state directly into the raw HTML string?"
+  },
+  {
+    "id": "idea_p1_4",
+    "title": "Animation Events as Stealth Callbacks",
+    "core_concept": "Attach a 1ms CSS animation to the newly generated Lightboard wrapper. Use a persistent Lua plugin or global trigger to attach an `animationstart` listener to the document. When the animation fires, the script catches the event target and calls `.showPopover()`.",
+    "perspective_reveal": "When direct `<script>` tags are sanitized or blocked, CSS animations provide a stealthy side-channel to broadcast a 'DOM node inserted' signal to any waiting global scripts."
+  },
+  {
+    "id": "idea_p1_5",
+    "title": "Brute-force MutationObserver Injection",
+    "core_concept": "Write a Lua plugin or use an initial trigger script to attach a `MutationObserver` to the main chat container. The observer blindly watches for new DOM nodes matching `.lb-interaction-result`, instantly scrolling them into view and executing `.showPopover()`.",
+    "perspective_reveal": "If we cannot cleanly hook into Svelte's `editDisplay` pipeline, we can just sit outside the framework, watch the DOM blindly, and hijack the UI state the millisecond Svelte commits its changes."
+  },
+  {
+    "id": "idea_p2_1",
+    "title": "Emit Custom Svelte Event via editDisplay Pipeline",
+    "core_concept": "Modify the core Svelte message rendering component to listen for a specific event emitted during the `editDisplay` plugin lifecycle. When detected, the component natively calls `showPopover()` on the Lightboard dialog and executes `scrollIntoView`.",
+    "perspective_reveal": "By tapping directly into the Svelte lifecycle, we ensure the DOM is fully updated before attempting to focus, avoiding race conditions and respecting the strict data flow of the core engine."
+  },
+  {
+    "id": "idea_p2_2",
+    "title": "Extend Plugin API with Native Navigation Commands",
+    "core_concept": "Introduce new Lua/plugin API endpoints that allow Lightboard to send structured `scrollToMessage` and `openPopover` commands back to the engine. The core chat processor will parse these commands and execute the UI navigations natively after appending the new message.",
+    "perspective_reveal": "A formalized API approach maintains a clean separation of concerns, treating UI actions as state-driven side effects rather than relying on hacky DOM manipulations."
+  },
+  {
+    "id": "idea_p2_3",
+    "title": "State-Driven Auto-Focus via lb-interaction__ Interception",
+    "core_concept": "Hook into the Svelte event delegation system where `lb-interaction__` clicks are handled, storing the interaction context in a global Svelte store. Once the subsequent AI response stream completes, the core engine automatically resolves this state by opening the target popover.",
+    "perspective_reveal": "Managing interaction state globally within the Svelte store ensures that asynchronous chat streaming doesn't break the UI focus flow, maintaining strict architectural control."
+  },
+  {
+    "id": "idea_p2_4",
+    "title": "Engine-Level MutationObserver for Lightboard Nodes",
+    "core_concept": "Implement a global MutationObserver within the root `App.svelte` that watches for newly added `.chat-message` nodes containing specific Lightboard data-flags. Upon detection, it automatically triggers the popover API and scrolls to the node.",
+    "perspective_reveal": "This provides a reactive, engine-level safety net that guarantees the popover opens regardless of how the plugin system injects the HTML, prioritizing system-wide consistency."
+  },
+  {
+    "id": "idea_p2_5",
+    "title": "Introduce DOM-Safe postRender Lifecycle Hook",
+    "core_concept": "Create a new plugin lifecycle phase called `postRender` that executes strictly after the Svelte `$updated` tick. This hook passes a reference to the actual DOM node of the message to the plugin, allowing safe execution of `showPopover()` without raw script injections.",
+    "perspective_reveal": "Designing a robust DOM-safe lifecycle hook solves the immediate problem cleanly while expanding the core plugin architecture's capabilities for future UI-intensive modules."
+  },
+  {
+    "id": "idea_p3_1",
+    "title": "CSS 상태(Checkbox Hack / :target)를 활용한 인라인 자동 펼침",
+    "core_concept": "팝오버 대신 숨겨진 체크박스나 `:target` 선택자를 활용해 클릭(인터랙션) 즉시 결과를 인라인으로 부드럽게 펼쳐서 보여줍니다. `<details>` 태그 버그를 피하면서도 HTML/CSS만으로 상태를 유지할 수 있으며, RisuAI 코어 수정 없이 모듈 측 CSS 주입만으로 구현(난이도: 낮음, 실현 가능성: 높음) 가능합니다.",
+    "perspective_reveal": "사용자에게 '팝오버를 여는 동작'은 맥락 단절을 의미합니다. 인라인으로 자연스럽게 공간을 밀어내며 나타나는 트랜지션이 심리적 마찰을 최소화합니다."
+  },
+  {
+    "id": "idea_p3_2",
+    "title": "Lua 트리거 API를 통한 자동 스크롤 및 포커싱",
+    "core_concept": "인터랙션이 끝난 후 실행되는 트리거(Lua 스크립트)에서 RisuAI의 UI 제어 API(예: `scrollIntoView` 래퍼나 메시지 포커스 기능)를 호출하여 최신 메시지로 화면을 자동 스크롤합니다. 코어에 해당 API가 존재하거나 추가되어야 하므로(난이도: 중간, 실현 가능성: 중간) RisuAI 파이프라인(`src/ts/process/`)과의 연동이 필요합니다.",
+    "perspective_reveal": "새로운 콘텐츠가 생성되었을 때 사용자가 직접 찾아 스크롤하게 만드는 것은 최악의 경험입니다. 시스템이 사용자의 시선을 부드럽게 새 목적지로 인도해야 합니다."
+  },
+  {
+    "id": "idea_p3_3",
+    "title": "CSS Animation을 이용한 '시선 유도(Eye-catching)' 글로우 이펙트",
+    "core_concept": "새로 생성된 채팅 메시지 내의 LBDATA 영역에 1회성 CSS `@keyframes` 애니메이션(예: 맥동하는 테두리나 배경색 하이라이트)을 적용합니다. 팝오버를 수동으로 열어야 하더라도 사용자가 즉각적으로 어디를 클릭해야 할지 시각적 힌트를 주며, 모듈 단독으로 처리 가능합니다(난이도: 낮음, 실현 가능성: 높음).",
+    "perspective_reveal": "물리적인 스크롤이나 강제 팝오버 오픈이 기술적으로 어렵다면, 최소한 인지적 탐색 비용을 줄여주어야 합니다. 시각적 단서는 가장 저렴하면서도 효과적인 UX 개선책입니다."
+  },
+  {
+    "id": "idea_p3_4",
+    "title": "마이크로 인터랙션: 인라인 '미니 프리뷰' 제공",
+    "core_concept": "전체 SNS UI를 팝오버에 가두는 대신, `editDisplay`에서 생성된 최신 댓글의 첫 줄이나 요약본만 채팅 메시지 본문에 인라인으로 렌더링하고 '전체 보기' 버튼을 제공합니다. 기존 팝오버 구조를 유지하면서도 코어 로직 수정 없이 모듈 레이아웃만 변경해 즉각적인 피드백을 제공합니다(난이도: 낮음, 실현 가능성: 높음).",
+    "perspective_reveal": "사용자는 자신의 행동에 대한 '즉각적인 확인'을 원합니다. 전체 내용을 다 보여주지 못하더라도, 내 댓글이 성공적으로 달렸다는 피드백을 바로 텍스트로 보여주면 불안감이 해소됩니다."
+  },
+  {
+    "id": "idea_p3_5",
+    "title": "Pop-over API의 `defaultopen` 속성 또는 CSS 기반 자동 오픈",
+    "core_concept": "최신 HTML5 Popover API의 특성이나 CSS의 `:has()` 및 `autofocus` 속성을 교묘하게 조합하여, 새로운 렌더링 사이클에서 특정 LBDATA 컴포넌트가 DOM에 마운트될 때 팝오버가 자동으로 `showPopover()` 상태가 되도록 유도합니다. 브라우저 보안 정책에 따라 동작이 제한될 수 있어 실험적입니다(난이도: 높음, 실현 가능성: 낮음).",
+    "perspective_reveal": "궁극적인 인터랙션은 'Zero Click'입니다. 사용자가 댓글을 달았다는 것은 그 결과를 보고 싶다는 명백한 의도이므로, 렌더링 즉시 결과물이 화면에 떠오르는 것이 가장 이상적인 플로우입니다."
+  },
+  {
+    "id": "idea_p4_1",
+    "title": "CSS `:target` 기반 자동 스크롤 및 펼침 (Pure CSS URL Hash Hack)",
+    "core_concept": "[개요] URL 해시와 CSS `:target`을 이용해 JS 없이 자동 열림 및 스크롤을 구현합니다. [기술적 근거] 브라우저 네이티브 동작인 `#id` 네비게이션과 `.lbd-content:target { display:block; }` CSS를 활용합니다. 새 메시지 렌더링 시 고유 ID를 부여하고 해당 앵커로 이동하게 유도합니다. [구현 난이도] 모듈 측 HTML/CSS 수정만으로 가능 (하). [실현 가능성] 높음. RisuAI의 라우터가 해시 변경을 방해하지 않는다면 완벽히 동작합니다.",
+    "perspective_reveal": "복잡한 팝오버 API나 JS 포커스 제어는 오버엔지니어링입니다. 순수 CSS의 상태 선택자인 `:target`을 사용하면 렌더링 파이프라인 개입 없이도 브라우저가 알아서 스크롤과 가시성 전환을 처리해줍니다."
+  },
+  {
+    "id": "idea_p4_2",
+    "title": "Hidden Checkbox 상태 머신을 통한 자동 전개",
+    "core_concept": "[개요] 숨겨진 `<input type=\"checkbox\" checked>`를 생성된 HTML에 포함시켜 렌더링 즉시 열린 상태를 강제합니다. [기술적 근거] `editDisplay` 콜백이 반환하는 HTML 내에 `<input id=\"lbd-toggle\" type=\"checkbox\" checked hidden>`과 `input:checked + .content { display: block; }` 구조를 주입합니다. [구현 난이도] 모듈 측 HTML/CSS 수정만으로 완벽히 독립적 구현 가능 (하). [실현 가능성] 매우 높음. RisuAI의 DOM 삽입 로직이나 팝오버 충돌과 무관하게 HTML/CSS 표준만으로 동작합니다.",
+    "perspective_reveal": "JS 기반의 상태 관리는 프레임워크 제약에 부딪히기 쉽지만, HTML Checkbox 트릭은 DOM이 존재하는 한 절대 실패하지 않는 가장 견고한 UI 상태 저장소입니다."
+  },
+  {
+    "id": "idea_p4_3",
+    "title": "CSS Anchor Positioning을 이용한 인라인 오버레이",
+    "core_concept": "[개요] `<dialog popover>` 대신 CSS Anchor Positioning을 사용하여 팝오버를 대체하고 자동으로 표시합니다. [기술적 근거] 새로운 CSS 표준인 `anchor-name`을 이용해 메시지 컨텍스트 내에서 UI를 띄웁니다. JS의 `showPopover()` 호출이 필요 없이 렌더링 즉시 지정된 앵커 위치에 오버레이가 나타납니다. [구현 난이도] 모듈 측 CSS 수정 (중). [실현 가능성] 중간. 구형 브라우저 지원 문제와 RisuAI의 `overflow: hidden` 컨테이너에 의해 잘릴 위험이 있습니다.",
+    "perspective_reveal": "사용자가 수동으로 팝오버를 열어야 한다는 전제 자체가 문제입니다. Anchor Positioning을 사용하면 JS 호출 없이 DOM 구조 흐름을 깨지 않고도 플로팅 UI를 화면에 즉시 렌더링할 수 있습니다."
+  },
+  {
+    "id": "idea_p4_4",
+    "title": "CSS Animation 및 Scroll-Snap을 활용한 강제 포커싱",
+    "core_concept": "[개요] 새 메시지에 CSS 애니메이션을 적용하고 `scroll-snap`을 통해 브라우저가 해당 위치로 스크롤을 당기도록 유도합니다. [기술적 근거] `.new-lbd-msg { animation: auto-focus 0.1s forwards; scroll-snap-align: start; }`를 적용. RisuAI 파이프라인에서 새 메시지 DOM 삽입 시 트리거됩니다. [구현 난이도] 모듈 측 CSS 수정만으로 가능 (하). [실현 가능성] 중간. 부모 컨테이너(채팅 스크롤 영역)에 `scroll-snap-type`이 설정되어야 완벽히 동작할 수 있습니다.",
+    "perspective_reveal": "API의 `scrollToMessage`를 찾아서 억지로 호출할 필요가 없습니다. DOM 노드가 생성될 때 발생하는 CSS 라이프사이클을 악용하면 브라우저의 네이티브 스크롤 엔진을 우리 마음대로 조종할 수 있습니다."
+  },
+  {
+    "id": "idea_p4_5",
+    "title": "CSS Containment로 격리된 강제 `<details open>`",
+    "core_concept": "[개요] 이전에 실패했던 `<details open>` 방식을 CSS `contain` 속성으로 완전히 격리시켜 기존 UI 파괴를 막습니다. [기술적 근거] `editDisplay`에서 `<details open style=\"contain: strict;\">`를 반환합니다. h DSL의 nil hole 문제가 DOM 트리 외부로 전파되는 것을 브라우저 엔진 레벨에서 차단합니다. [구현 난이도] 모듈 측 HTML/CSS 수정 (하). [실현 가능성] 높음. RisuAI의 코어 렌더링을 건드리지 않고 브라우저의 렌더링 격리(Isolation) 기능만 빌려 쓰므로 매우 안정적입니다.",
+    "perspective_reveal": "실패한 기존 접근법이 근본적으로 틀린 게 아니라, CSS 스코핑이 부족했을 뿐입니다. 팝오버 같은 무거운 개념을 도입하기보다 렌더링 트리를 격리하는 `contain: strict` 한 줄이 훨씬 우아하고 가벼운 해결책입니다."
+  },
+  {
+    "id": "cross_p4_1",
+    "title": "Global Popover Control via :has() and Checked Inputs",
+    "type": "evolution",
+    "source_ids": [
+      "idea_p4_2",
+      "idea_p1_1"
+    ],
+    "description": "Evolves the hidden checkbox idea by leveraging CSS `:has()` from the document root. By injecting an `<input type=\"radio\" name=\"lb-active\" checked hidden>` into the newly rendered LBDATA, global CSS can detect this newly checked radio and force its specific sibling/target popover to display block, bypassing both the native Popover API and Svelte's state entirely."
+  },
+  {
+    "id": "cross_p4_2",
+    "title": "Animation-Driven Lua Event Bridge",
+    "type": "hybrid",
+    "source_ids": [
+      "idea_p1_4",
+      "idea_p3_3"
+    ],
+    "description": "Combines CSS animations with a global Lua event listener. The newly inserted LBDATA includes an element with a 1ms `@keyframes` animation. A persistent Lua trigger listens for the `animationstart` event globally, instantly identifying the new DOM node, calling `.scrollIntoView()`, and programmatically executing `showPopover()` on it."
+  },
+  {
+    "id": "cross_p4_3",
+    "title": "Autofocus + :focus-within Auto-Expander",
+    "type": "new",
+    "source_ids": [],
+    "description": "Embeds a visually hidden `<button autofocus>` inside the interaction result HTML. Upon rendering, the browser natively and instantly scrolls down to focus the button without JS intervention. A `.lb-container:focus-within .lb-content { display: block; }` CSS rule then automatically expands the UI inline."
+  },
+  {
+    "id": "cross_p4_4",
+    "title": "Dynamic <style> Tag Injection Override",
+    "type": "new",
+    "source_ids": [],
+    "description": "Directly injects a scoped `<style>` block within the new LBDATA HTML snippet returned by `editDisplay`. This style block targets the specific unique ID of the newly generated popover, instantly overriding its native hidden state and forcing it to render as soon as Svelte commits the DOM update."
+  },
+  {
+    "id": "cross_p5_1",
+    "title": "Standardized interactionComplete API Hook",
+    "type": "evolution",
+    "source_ids": [
+      "idea_p2_2",
+      "idea_p3_2"
+    ],
+    "description": "Formalize an `interactionComplete` hook in the Plugin API that explicitly accepts a structured response (e.g., `{ action: 'open_popover', target_id: '...', scroll: true }`). The core Svelte components subscribe to this standardized state change, ensuring that the DOM is fully hydrated before natively calling `.scrollIntoView()` and `.showPopover()`, maintaining strict data flow."
+  },
+  {
+    "id": "cross_p5_2",
+    "title": "Data-Attribute Driven Core Observer",
+    "type": "hybrid",
+    "source_ids": [
+      "idea_p2_1",
+      "idea_p4_1"
+    ],
+    "description": "Extend `editDisplay` to allow injecting a clean `data-focus-target=\"true\"` attribute into the interaction result. A centralized Svelte `afterUpdate` lifecycle hook at the core level watches for this attribute, natively executes `element.scrollIntoView()`, and manages popover state cleanly without relying on brittle CSS hacks."
+  },
+  {
+    "id": "cross_p5_3",
+    "title": "Official Lua Navigation API Extension",
+    "type": "new",
+    "source_ids": [],
+    "description": "Expand the RisuAI Lua API to include `risu.ui.focusMessage(msgId, { openLightboard: true })`. When a Lightboard interaction finishes, the trigger script invokes this official API, which updates a centralized Svelte store, prompting the message component to reactively open its popover and scroll natively."
+  },
+  {
+    "id": "cross_p5_4",
+    "title": "Deferred UI Action Queue in Chat Pipeline",
+    "type": "new",
+    "source_ids": [],
+    "description": "Implement a 'Deferred UI Action' queue in the core chat pipeline. When `editDisplay` processes an interaction, it yields secondary metadata alongside the HTML; the engine pushes a deferred action to open the popover, consumed safely by the UI layer only after the Svelte `$updated` tick guarantees DOM readiness."
+  },
+  {
+    "id": "cross_p3_1",
+    "title": "Seamless Inline Preview with Auto-Scroll Context",
+    "type": "hybrid",
+    "source_ids": [
+      "idea_p3_4",
+      "idea_p4_4"
+    ],
+    "description": "By combining a compact inline summary with CSS `scroll-snap`, the new message gently pulls into the user's viewport immediately upon rendering. This eliminates the cognitive friction of a blocking popover, providing instant visual confirmation of the interaction while keeping the user immersed in the primary chat flow."
+  },
+  {
+    "id": "cross_p3_2",
+    "title": "Stateful Inline Expansion to Preserve Mental Context",
+    "type": "hybrid",
+    "source_ids": [
+      "idea_p3_1",
+      "idea_p2_3"
+    ],
+    "description": "Instead of disjointed popovers, we track the interaction state to render the result fully inline using a pre-expanded HTML structure (like the CSS checkbox trick). This maintains the user's mental model by ensuring the result appears as a natural, fluid extension of the conversation rather than a separate floating layer they must manage."
+  },
+  {
+    "id": "cross_p3_3",
+    "title": "Visual Breadcrumbs via Hash Navigation and Glow",
+    "type": "hybrid",
+    "source_ids": [
+      "idea_p3_3",
+      "idea_p4_1"
+    ],
+    "description": "Utilizing pure CSS `:target` navigation combined with a fading animation, the UI naturally jumps to the newly appended message and highlights it with a subtle glow. This provides an elegant, frictionless pathway that guides the user's eye exactly to the outcome of their action without requiring any manual searching or extra clicks."
+  },
+  {
+    "id": "cross_p5_1",
+    "title": "Checkbox-Driven Progressive Disclosure Preview",
+    "type": "hybrid",
+    "source_ids": [
+      "idea_p4_2",
+      "idea_p3_4"
+    ],
+    "description": "Instead of forcing a full popover or a large inline expansion, we use the hidden checkbox hack to initially render a minimalistic inline preview of the interaction result within the chat message. When the user clicks the preview, the purely CSS-driven checkbox state instantly expands to reveal the full content inline, avoiding any JS Popover API overhead and keeping the rendering pipeline clean."
+  },
+  {
+    "id": "cross_p5_2",
+    "title": "Zero-JS Autonomous Focus via CSS Target-Snap",
+    "type": "evolution",
+    "source_ids": [
+      "idea_p1_2",
+      "idea_p4_4"
+    ],
+    "description": "Building on autofocus and scroll-snap concepts, we inject a unique anchor ID into the generated Lightboard HTML and apply `scroll-snap-align: center`. If the interaction submission automatically appends this hash to the URL, the browser's native behavior will snap the newly rendered message perfectly into the viewport, bypassing Svelte's scroll management entirely."
+  },
+  {
+    "id": "cross_p5_3",
+    "title": "Isolated Shadow DOM Injection for Safe Native States",
+    "type": "inversion",
+    "source_ids": [
+      "idea_p2_1",
+      "idea_p4_5"
+    ],
+    "description": "Rather than relying on Svelte events or risking global DOM conflicts, we wrap the `editDisplay` output in a declarative Shadow Root (`<template shadowrootmode=\"open\">`). Inside this completely isolated DOM layer, we can safely use `<details open>` or native dialogs without triggering h DSL nil hole bugs, keeping the core engine blissfully unaware of our UI state."
+  }
+]

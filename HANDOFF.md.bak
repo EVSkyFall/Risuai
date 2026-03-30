@@ -1,0 +1,102 @@
+# Session Handoff
+
+> 최종 갱신: 2026-02-23T20:54 KST | 세션 93964e98
+
+## 프로젝트 개요
+
+- **프로젝트명**: RisuAI Server-Stream
+- **한줄 요약**: RisuAI 서버 배포판. 프론트 부담을 줄이고 서버 사이드 파이프라인으로 이전
+- **기술 스택**: Svelte 5 + TypeScript + Vite (프론트), Node.js + Express (서버 `server/node/server.cjs`)
+- **배포**: GitHub `fork/server-stream` → SSH pull → `pnpm run build` → `pm2 restart risu`
+- **서버**: Oracle Cloud 134.185.114.135:6001
+
+## 현재 진행 상태
+
+- **전체 진척도**: server/node/ CJS 파이프라인 완성(CBS/Parser/Lorebook/Scripts/Lua), 프론트-서버 통합 진행중
+
+### 이번 세션 완료 작업
+
+- [x] P0: `serverAsyncFetch` 래퍼를 `globalFetch` 호환으로 수정
+  - `serverJobClient.ts`: `Buffer.from(base64)` → `base64ToUint8Array()` (Uint8Array 반환)
+  - `serverJobClient.ts`: error+result 동시 처리 개선
+  - `stableDiff.ts` L71: `isNodeServer ? serverAsyncFetch : globalFetch` 분기 추가
+  - `serverImageJob.cjs`: 서버측 변경 불필요 확인
+- [x] TypeScript 타입 체크 + Vite 빌드 통과 확인
+
+### 현재 진행 중인 작업
+
+없음. P0 완료 후 세션 종료.
+
+## 다음 세션에서 할 일
+
+1. **[P0]** 서버 배포 후 실제 이미지 생성(NovelAI) E2E 테스트
+   - `git push fork server-stream` → SSH 배포 → 프론트에서 이미지 생성 → Network 탭에서 `/api/job/submit` → `/api/job/status` 확인
+2. **[P1]** `promptBuilder.cjs` L110 TODO: `moduleLorebooks` 추출 로직 구현
+3. **[P1]** 이전 세션 백업 분석 (`_Inbox/Implementing Native PTM Feature.md`, 7007줄)
+   - server/node/ CJS 파이프라인 구현 이력 정리, 미완성 기능 식별
+4. **[P2]** Swarm `run.py`: 읽기 전용 모드 복원 (gemini CLI 업데이트 후)
+5. **[P2]** Swarm `run.py`: exit code 1 시 빈 결과 파일 디버깅
+6. **[P2]** TogglePresetManager UI 테스트/피드백 반영
+
+## 알려진 이슈 / 블로커
+
+| 이슈 | 상태 | 비고 |
+|------|------|------|
+| 이미지 비동기 큐 미검증 | 미해결 | 코드 완성, 서버 배포 후 E2E 테스트 필요 |
+| `promptBuilder.cjs` moduleLorebooks TODO | 미해결 | L110. 모듈 로어북 추출 로직 미구현 |
+
+## 핵심 의사결정 로그
+
+| 결정 사항 | 이유 | 기각된 대안 |
+|-----------|------|------------|
+| binary→Uint8Array (atob 기반) | globalFetch가 rawResponse 시 Uint8Array 반환 | Buffer.from — 브라우저 폴리필 의존성 불필요하게 증가 |
+| serverImageJob.cjs 변경 안 함 | body 처리/binary 감지 로직이 이미 정확 | 서버측 binary→Uint8Array 변환 — 클라 책임이 맞음 |
+| stableDiff.ts에서 isNodeServer 분기 | 비NodeServer(Tauri/web)는 기존 globalFetch→/proxy2 유지 | 전역 imgFetch 래퍼 — 불필요한 추상화 |
+
+## 아키텍처 / 설계 메모
+
+변경 없음. 기존 아키텍처 유지:
+- 프론트(`stableDiff.ts`) → `serverAsyncFetch` → `/api/job/submit` → 서버(`serverImageJob.cjs`) → 외부 API → polling → 결과 반환
+
+## 환경 / 설정 노트
+
+특이사항 없음.
+
+## server/node/ CJS 파일 현황
+
+| 파일 | 상태 | 역할 |
+|------|------|------|
+| `server.cjs` | ✅ 완성 | Express 메인 서버, 라우트 등록 |
+| `chatEngine.cjs` | ✅ 완성 | 채팅 처리 엔진 |
+| `serverParser.cjs` | ✅ 완성 | 프롬프트 파서 |
+| `serverCBS.cjs` | ✅ 완성 | CBS 조건부 블록 처리 |
+| `serverCBSUtils.cjs` | ✅ 완성 | CBS 유틸리티 |
+| `serverLorebook.cjs` | ✅ 완성 | 로어북 처리 |
+| `serverLuaRuntime.cjs` | ✅ 테스트됨 | Lua 런타임 |
+| `serverDbCache.cjs` | ✅ 완성 | DB 캐시 |
+| `serverRisuSave.cjs` | ✅ 완성 | 세이브 관리 |
+| `serverFeatureFlags.cjs` | ✅ 테스트됨 | 기능 플래그 |
+| `serverImageJob.cjs` | ✅ 완성 | 이미지 비동기 큐 (프론트 연동 완료, E2E 미검증) |
+| `chatArchive.cjs` | ✅ 완성 | 채팅 아카이브 |
+| `inlayServer.cjs` | ✅ 완성 | 인레이 서버 |
+| `promptBuilder.cjs` | ⚠️ 미완성 | 프롬프트 빌더 (moduleLorebooks TODO) |
+
+## 배포 절차
+
+```bash
+# 로컬: 커밋 & 푸시
+git push fork server-stream
+
+# 서버: SSH 배포
+ssh -i C:\SSH\Oracle_RisuAI_SSH.key ubuntu@134.185.114.135 \
+  "cd ~/Risu-AI/RisuAI && git stash && git pull origin server-stream && pnpm run build && pm2 restart risu"
+```
+
+## 컨텍스트 백업
+
+- `_Inbox/Implementing Native PTM Feature.md` — 이전 세션 전체 컨텍스트 (7007줄)
+
+## ⚠️ 다음 에이전트 유의사항
+
+- **반드시 swarm을 사용할 것**: 3개 이상 파일 수정, 분석, 구현 작업 시 `antigravity-swarm` 스킬 활용 필수
+- swarm 스킬 위치: `C:/Users/Cardinal/.gemini/skills/antigravity-swarm/SKILL.md`
