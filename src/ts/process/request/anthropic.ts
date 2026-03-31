@@ -1031,7 +1031,8 @@ async function requestClaudeHTTP(replacerURL:string, headers:{[key:string]:strin
                     messages.push(toolResponse)
                     body.messages = messages
                     body.stream = false
-                    // Recursion: send tool results (non-streaming for simplicity)
+                    arg.useStreaming = false
+                    // Recursion: send tool results (non-streaming)
                     const toolResult = await requestClaudeHTTP(replacerURL, headers, body, arg, copilotTaskId)
                     if(toolResult.type === 'success'){
                         const prefix = text ? text + '\n\n' : ''
