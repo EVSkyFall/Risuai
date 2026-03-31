@@ -786,12 +786,6 @@ export async function requestClaude(arg:RequestDataArgumentExtended):Promise<req
         }
     }
 
-    // Disable streaming when tools are present — streaming path doesn't handle tool_use recursion
-    if (arg.tools && arg.tools.length > 0) {
-        body.stream = false
-        arg.useStreaming = false
-    }
-
     return requestClaudeHTTP(replacerURL, headers, body, arg)
 }
 
@@ -845,6 +839,12 @@ async function requestClaudeHTTP(replacerURL:string, headers:{[key:string]:strin
         let breakError = ''
         let thinking = false
 
+        // Track tool_use blocks during streaming for MCP tool call handling
+        let streamToolUseBlocks: any[] = []
+        let currentToolBlock: any = null
+        let streamStopReason: string | null = null
+        let streamContentBlocks: any[] = []
+
         const stream = new ReadableStream<StreamResponseChunk>({
             async start(controller){
                 let text = ''
@@ -852,18 +852,39 @@ async function requestClaudeHTTP(replacerURL:string, headers:{[key:string]:strin
                 let parserData = ''
                 const decoder = new TextDecoder()
                 const parseEvent = ((e:string) => {
-                    try {               
+                    try {
                         const parsedData = JSON.parse(e)
 
+                        if(parsedData?.type === 'content_block_start'){
+                            if(parsedData?.content_block?.type === 'tool_use'){
+                                currentToolBlock = {
+                                    type: 'tool_use',
+                                    id: parsedData.content_block.id,
+                                    name: parsedData.content_block.name,
+                                    input: {}
+                                }
+                                streamContentBlocks.push(currentToolBlock)
+                            } else {
+                                currentToolBlock = null
+                                if(parsedData?.content_block){
+                                    streamContentBlocks.push(parsedData.content_block)
+                                }
+                            }
+                        }
+
                         if(parsedData?.type === 'content_block_delta'){
-                            if(parsedData?.delta?.type === 'text' || parsedData.delta?.type === 'text_delta'){
+                            if(parsedData?.delta?.type === 'input_json_delta' && currentToolBlock){
+                                // Accumulate tool input JSON
+                                currentToolBlock._inputJson = (currentToolBlock._inputJson || '') + (parsedData.delta.partial_json || '')
+                            }
+                            else if(parsedData?.delta?.type === 'text' || parsedData.delta?.type === 'text_delta'){
                                 if(thinking){
                                     text += "</Thoughts>\n\n"
                                     thinking = false
                                 }
                                 text += parsedData.delta?.text ?? ''
                             }
-    
+
                             if(parsedData?.delta?.type === 'thinking' || parsedData.delta?.type === 'thinking_delta'){
                                 if(!thinking){
                                     text += "<Thoughts>\n"
@@ -871,7 +892,7 @@ async function requestClaudeHTTP(replacerURL:string, headers:{[key:string]:strin
                                 }
                                 text += parsedData.delta?.thinking ?? ''
                             }
-    
+
                             if(parsedData?.delta?.type === 'redacted_thinking'){
                                 if(!thinking){
                                     text += "<Thoughts>\n"
@@ -881,10 +902,22 @@ async function requestClaudeHTTP(replacerURL:string, headers:{[key:string]:strin
                             }
                         }
 
+                        if(parsedData?.type === 'content_block_stop'){
+                            if(currentToolBlock && currentToolBlock._inputJson){
+                                try { currentToolBlock.input = JSON.parse(currentToolBlock._inputJson) } catch {}
+                                delete currentToolBlock._inputJson
+                                streamToolUseBlocks.push(currentToolBlock)
+                            }
+                            currentToolBlock = null
+                        }
+
+                        if(parsedData?.type === 'message_delta'){
+                            streamStopReason = parsedData?.delta?.stop_reason || null
+                        }
+
                         if(parsedData?.type === 'error'){
                             const errormsg:string = parsedData?.error?.message
                             if(errormsg && errormsg.toLocaleLowerCase().includes('overload') && db.antiServerOverloads){
-                                // console.log('Overload detected, retrying...')
                                 controller.enqueue({
                                     "0": "Overload detected, retrying..."
                                 })
@@ -894,13 +927,13 @@ async function requestClaudeHTTP(replacerURL:string, headers:{[key:string]:strin
                             text += "Error:" + parsedData?.error?.message
 
                         }
-                        
+
                     }
                     catch (error) {
                     }
 
-                        
-                        
+
+
                 })
                 let breakWhile = false
                 let i = 0;
@@ -910,7 +943,7 @@ async function requestClaudeHTTP(replacerURL:string, headers:{[key:string]:strin
                         if(arg?.abortSignal?.aborted || breakWhile){
                             break
                         }
-                        const {done, value} = await reader.read() 
+                        const {done, value} = await reader.read()
                         if(done){
                             break
                         }
@@ -933,7 +966,7 @@ async function requestClaudeHTTP(replacerURL:string, headers:{[key:string]:strin
                                         signal: arg.abortSignal,
                                         interceptor: 'anthropic_streaming_retry'
                                     })
-                            
+
                                     if(res.status !== 200){
                                         controller.enqueue({
                                             "0": await textifyReadableStream(res.body)
@@ -958,6 +991,52 @@ async function requestClaudeHTTP(replacerURL:string, headers:{[key:string]:strin
                         await sleep(1)
                     }
                 }
+
+                // Handle tool_use in streaming: execute tools and send results back
+                if(streamStopReason === 'tool_use' && streamToolUseBlocks.length > 0){
+                    const messages: Claude3ExtendedChat[] = body.messages
+                    // Add assistant response with all content blocks
+                    messages.push({
+                        role: 'assistant',
+                        content: streamContentBlocks
+                    })
+                    // Build tool results
+                    const toolResponse: Claude3Chat = { role: 'user', content: [] }
+                    for(const toolBlock of streamToolUseBlocks){
+                        const used = await callTool(toolBlock.name, toolBlock.input)
+                        const r: Claude3ToolResponseBlock = {
+                            type: 'tool_result',
+                            tool_use_id: toolBlock.id,
+                            content: used.map((v) => {
+                                switch(v.type){
+                                    case 'text': return { type: 'text', text: v.text }
+                                    case 'image': return { type: 'image', source: { type: 'base64', media_type: v.mimeType, data: v.data } }
+                                    default: return { type: 'text', text: `Unsupported: ${v.type}` }
+                                }
+                            })
+                        }
+                        toolResponse.content.push(r)
+                        if(arg.rememberToolUsage){
+                            arg.additionalOutput ??= ''
+                            arg.additionalOutput += await encodeToolCall({
+                                call: { id: toolBlock.id, name: toolBlock.name, arg: toolBlock.input },
+                                response: used
+                            })
+                        }
+                    }
+                    messages.push(toolResponse)
+                    body.messages = messages
+                    body.stream = false
+                    // Recursion: send tool results (non-streaming for simplicity)
+                    const toolResult = await requestClaudeHTTP(replacerURL, headers, body, arg, copilotTaskId)
+                    if(toolResult.type === 'success'){
+                        const prefix = text ? text + '\n\n' : ''
+                        controller.enqueue({ "0": prefix + toolResult.result })
+                    } else if(toolResult.type === 'fail'){
+                        controller.enqueue({ "0": text + '\nTool call failed: ' + toolResult.result })
+                    }
+                }
+
                 controller.close()
             },
             cancel(){
