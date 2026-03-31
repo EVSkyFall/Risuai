@@ -786,6 +786,12 @@ export async function requestClaude(arg:RequestDataArgumentExtended):Promise<req
         }
     }
 
+    // Disable streaming when tools are present — streaming path doesn't handle tool_use recursion
+    if (arg.tools && arg.tools.length > 0) {
+        body.stream = false
+        arg.useStreaming = false
+    }
+
     return requestClaudeHTTP(replacerURL, headers, body, arg)
 }
 
