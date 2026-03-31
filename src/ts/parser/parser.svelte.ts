@@ -661,7 +661,12 @@ function trimmer(str:string){
     return str.trim().replace(/[_ -.]/g, '')
 }
 
-const blobUrlCache = new Map<string, string>()
+interface BlobCacheItem {
+    url: string;
+    type: string;
+}
+const blobUrlCache = new Map<string, BlobCacheItem>()
+const MAX_BLOB_CACHE_SIZE = 200;
 
 async function parseInlayAssets(data:string){
     const inlayMatch = data.match(/{{(inlay|inlayed|inlayeddata)::(.+?)}}/g)
@@ -672,29 +677,42 @@ async function parseInlayAssets(data:string){
             let prefix = inlayType !== 'inlay' ? `<div class="risu-inlay-image">` : ''
             let postfix = inlayType !== 'inlay' ? `</div>\n\n` : ''
 
-            const asset = await getInlayAssetBlob(id)
-            let url = blobUrlCache.get(id)
-            if(!url && asset?.data){
-                url = URL.createObjectURL(asset.data)
-                blobUrlCache.set(id, url)
-            } 
-            switch(asset?.type){
+            let cached = blobUrlCache.get(id)
+            if(!cached){
+                const asset = await getInlayAssetBlob(id)
+                if(asset?.data){
+                    const url = URL.createObjectURL(asset.data)
+                    cached = { url, type: asset.type }
+                    // LRU eviction to prevent memory leaks
+                    if(blobUrlCache.size >= MAX_BLOB_CACHE_SIZE){
+                        const firstKey = blobUrlCache.keys().next().value
+                        if(firstKey){
+                            const old = blobUrlCache.get(firstKey)
+                            if(old) URL.revokeObjectURL(old.url)
+                            blobUrlCache.delete(firstKey)
+                        }
+                    }
+                    blobUrlCache.set(id, cached)
+                }
+            }
+            if(!cached) continue
+
+            switch(cached.type){
                 case 'image':
-                    // Hide inlay images when hideAllImages is enabled
                     if(DBState.db.hideAllImages){
                         data = data.replace(inlay, '')
                         break
                     }
-                    data = data.replace(inlay, `${prefix}<img src="${url}"/>${postfix}`)
+                    data = data.replace(inlay, `${prefix}<img src="${cached.url}" loading="lazy" decoding="async"/>${postfix}`)
                     break
                 case 'video':
-                    data = data.replace(inlay, `${prefix}<video controls><source src="${url}" type="video/mp4"></video>${postfix}`)
+                    data = data.replace(inlay, `${prefix}<video controls><source src="${cached.url}" type="video/mp4"></video>${postfix}`)
                     break
                 case 'audio':
-                    data = data.replace(inlay, `${prefix}<audio controls><source src="${url}" type="audio/mpeg"></audio>${postfix}`)
+                    data = data.replace(inlay, `${prefix}<audio controls><source src="${cached.url}" type="audio/mpeg"></audio>${postfix}`)
                     break
             }
-            
+
         }
     }
     return data

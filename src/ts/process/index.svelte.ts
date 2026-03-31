@@ -31,7 +31,8 @@ import { runLuaEditTrigger } from "./scriptings";
 import { getModelInfo, LLMFlags } from "../model/modellist";
 import { hypaMemoryV3 } from "./memory/hypav3";
 import { getModuleAssets, getModuleToggles } from "./modules";
-import { readImage } from "../globalApi.svelte";
+import { readImage, forageStorage } from "../globalApi.svelte";
+import { isNodeServer } from "../platform";
 
 export interface OpenAIChat{
     role: 'system'|'user'|'assistant'|'function'
@@ -60,6 +61,49 @@ export interface requestTokenPart{
 export const doingChat = writable(false)
 export const chatProcessStage = writable(0)
 export const abortChat = writable(false)
+
+export interface ChatJobInfo {
+    charId: number
+    chatPage: number
+    abortController: AbortController
+    startedAt: number
+}
+/** Map<jobKey, ChatJobInfo> — tracks all active chat generations */
+export const activeChatJobs = writable<Map<string, ChatJobInfo>>(new Map())
+/** Create a unique key for a char+chat combination */
+export function chatJobKey(charId: number, chatPage: number): string {
+    return `${charId}:${chatPage}`
+}
+/** Check if a specific chat is currently generating */
+export function isChatGenerating(charId: number, chatPage: number): boolean {
+    return get(activeChatJobs).has(chatJobKey(charId, chatPage))
+}
+/** Check if ANY chat is currently generating */
+export function isAnyChatGenerating(): boolean {
+    return get(activeChatJobs).size > 0
+}
+/** Register a chat generation job */
+function registerChatJob(charId: number, chatPage: number, abortController: AbortController): string {
+    const key = chatJobKey(charId, chatPage)
+    activeChatJobs.update(m => {
+        const next = new Map(m)
+        next.set(key, { charId, chatPage, abortController, startedAt: Date.now() })
+        return next
+    })
+    doingChat.set(true)
+    return key
+}
+/** Unregister a chat generation job */
+function unregisterChatJob(key: string) {
+    activeChatJobs.update(m => {
+        const next = new Map(m)
+        next.delete(key)
+        return next
+    })
+    if (get(activeChatJobs).size === 0) {
+        doingChat.set(false)
+    }
+}
 export let requestTokenParts:{[key:string]:requestTokenPart[]} = {}
 export let previewFormated:OpenAIChat[] = []
 export let previewBody:string = ''
@@ -177,14 +221,20 @@ export async function sendChat(chatProcessIndex = -1,arg:{
         }
     }
 
-    let isDoing = get(doingChat)
+    // Per-chat generation tracking
+    const selectedCharForJob = get(selectedCharID)
+    const chatPageForJob = DBState.db.characters[selectedCharForJob]?.chatPage ?? 0
+    let isDoing = isChatGenerating(selectedCharForJob, chatPageForJob)
 
     if(isDoing){
         if(chatProcessIndex === -1){
             return false
         }
     }
-    doingChat.set(true)
+    const jobAbortController = arg.signal ? null : new AbortController()
+    const jobKey = registerChatJob(selectedCharForJob, chatPageForJob, jobAbortController ?? { signal: arg.signal, abort: () => {} } as any)
+
+    try {
 
     if(chatProcessIndex === -1 && DBState.db.presetChain){
         const names = DBState.db.presetChain.split(',').map((v) => v.trim())
@@ -208,7 +258,7 @@ export async function sendChat(chatProcessIndex = -1,arg:{
         const peerSafe = await peerSafeCheck()
         if(!peerSafe){
             peerRevertChat()
-            doingChat.set(false)
+            unregisterChatJob(jobKey)
             throwError(language.otherUserRequesting)
             return false
         }
@@ -808,7 +858,7 @@ export async function sendChat(chatProcessIndex = -1,arg:{
         ms = makeMs(currentChat)
         currentTokens += triggerResult.tokens
         if(triggerResult.stopSending){
-            doingChat.set(false)
+            unregisterChatJob(jobKey)
             return false
         }
     }
@@ -1528,6 +1578,28 @@ export async function sendChat(chatProcessIndex = -1,arg:{
         }
         DBState.db.characters[selectedChar].chats[selectedChat].isStreaming = true
         DBState.db.characters[selectedChar].reloadKeys += 1
+
+        // Track plugin stream for recovery on page refresh
+        const isPluginStream = req.model === 'custom'
+        if (isPluginStream && isNodeServer) {
+            const pluginStreamContext = {
+                charIndex: selectedChar,
+                chatPage: DBState.db.characters[selectedChar]?.chatPage ?? 0,
+                msgIndex,
+                time: Date.now()
+            }
+            localStorage.setItem('__risu_active_plugin_stream', JSON.stringify(pluginStreamContext))
+            try {
+                const char = DBState.db.characters[selectedChar]
+                if (char?.chaId) {
+                    const encoded = new TextEncoder().encode(JSON.stringify(char))
+                    await forageStorage.setItem(`remotes/${char.chaId}.local.bin`, encoded)
+                }
+            } catch (e) {
+                console.warn('[PluginRecovery] Failed to persist character data:', e)
+            }
+        }
+
         let lastResponseChunk:{[key:string]:string} = {}
         let streamAborted:boolean = abortSignal.aborted
         const abortReader = () => {
@@ -1577,6 +1649,15 @@ export async function sendChat(chatProcessIndex = -1,arg:{
 
         if(streamAborted || abortSignal.aborted){
             return false
+        }
+
+        // Clean up plugin stream tracking on successful completion
+        if (isPluginStream && isNodeServer && !streamAborted) {
+            localStorage.removeItem('__risu_active_plugin_stream')
+            fetch('/api/chat/recovery', {
+                method: 'DELETE',
+                headers: { 'risu-auth': localStorage.getItem('risuauth') || '' }
+            }).catch(() => {})
         }
 
         addRerolls(generationId, Object.values(lastResponseChunk))
@@ -1693,7 +1774,7 @@ export async function sendChat(chatProcessIndex = -1,arg:{
     }
 
     if(needsAutoContinue){
-        doingChat.set(false)
+        unregisterChatJob(jobKey)
         return await sendChat(chatProcessIndex, {
             chatAdditonalTokens: arg.chatAdditonalTokens,
             continue: true,
@@ -1737,7 +1818,7 @@ export async function sendChat(chatProcessIndex = -1,arg:{
             DBState.db.characters[selectedChar].chats[selectedChat].message[lastMessageIndex].generationInfo = generationInfo
         }
         
-        doingChat.set(false)
+        unregisterChatJob(jobKey)
         return await sendChat(chatProcessIndex, {
             signal: abortSignal
         })
@@ -2004,6 +2085,12 @@ export async function sendChat(chatProcessIndex = -1,arg:{
     }
 
     return true
+
+    } finally {
+        // Guarantee loading state cleanup on ALL exit paths (error, abort, success).
+        unregisterChatJob(jobKey)
+        chatProcessStage.set(0)
+    }
 }
 
 function systemizeChat(chat:OpenAIChat[]){

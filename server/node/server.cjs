@@ -35,6 +35,16 @@ if (existsSync(passwordPath)) {
 
 const authCodePath = path.join(process.cwd(), 'save', '__authcode')
 const hexRegex = /^[0-9a-fA-F]+$/;
+
+// ─── Active LLM Streaming State ───
+let activeStreamState = {
+    active: false,
+    startTime: 0,
+    model: '',
+    chunksReceived: 0,
+    clientConnected: true,
+};
+
 const PROXY_STREAM_DEFAULT_TIMEOUT_MS = 600000;
 const PROXY_STREAM_MAX_TIMEOUT_MS = 3600000;
 const PROXY_STREAM_DEFAULT_HEARTBEAT_SEC = 15;
@@ -799,6 +809,17 @@ const reverseProxyFunc = async (req, res, next) => {
         if ((isStreamingChat || teeCapture) && originalResponse.ok && originalResponse.body) {
             // ═══ TEE MODE: Capture LLM response server-side ═══
             const serverBuffer = [];
+
+            activeStreamState = {
+                active: true,
+                startTime: Date.now(),
+                model: req.body?.model || 'unknown',
+                chunksReceived: 0,
+                clientConnected: true,
+            };
+            res.on('close', () => { activeStreamState.clientConnected = false; });
+            res.on('error', () => { activeStreamState.clientConnected = false; });
+
             res.flushHeaders();
 
             const reader = originalResponse.body.getReader();
@@ -807,10 +828,11 @@ const reverseProxyFunc = async (req, res, next) => {
                 while (true) {
                     const { done, value } = await reader.read();
                     if (done) {
-                        console.log(`[Proxy TEE] Stream done. Total chunks: ${serverBuffer.length}`);
+                        console.log(`[Proxy TEE] Stream done. Total chunks: ${activeStreamState.chunksReceived}, buffer size: ${serverBuffer.reduce((a, b) => a + b.length, 0)} bytes`);
                         break;
                     }
                     serverBuffer.push(Buffer.from(value));
+                    activeStreamState.chunksReceived++;
 
                     if (clientConnected && !res.destroyed && !res.writableEnded) {
                         try { res.write(Buffer.from(value)); } catch (writeErr) { clientConnected = false; }
@@ -824,6 +846,7 @@ const reverseProxyFunc = async (req, res, next) => {
                 try { res.end(); } catch (e) { /* ignore */ }
             }
 
+            activeStreamState.active = false;
             console.log(`[Proxy TEE] Streaming complete. clientConnected=${clientConnected}`);
 
             // Parse and save captured response
@@ -1232,6 +1255,50 @@ app.delete('/proxy-stream-jobs/:jobId', authenticatedRouteLimiter, async (req, r
     res.send({ success: true });
 });
 
+// ─── LLM Recovery Endpoints ───
+app.get('/api/chat/recovery', authenticatedRouteLimiter, async (req, res) => {
+    if (!await checkProxyAuth(req, res)) {
+        return;
+    }
+    const recoveryPath = path.join(savePath, '__llm_recovery.json');
+    try {
+        const data = await fs.readFile(recoveryPath, 'utf-8');
+        const recovery = JSON.parse(data);
+        if (Date.now() - recovery.time > 10 * 60 * 1000) {
+            await fs.unlink(recoveryPath).catch(() => {});
+            return res.json({ recovery: null });
+        }
+        res.json({ recovery });
+    } catch (e) {
+        res.json({ recovery: null });
+    }
+});
+
+app.get('/api/chat/streaming-status', authenticatedRouteLimiter, async (req, res) => {
+    if (!await checkProxyAuth(req, res)) {
+        return;
+    }
+    res.json({
+        active: activeStreamState.active,
+        startTime: activeStreamState.startTime,
+        model: activeStreamState.model,
+        chunksReceived: activeStreamState.chunksReceived,
+        clientConnected: activeStreamState.clientConnected,
+        elapsed: activeStreamState.active ? Date.now() - activeStreamState.startTime : 0,
+    });
+});
+
+app.delete('/api/chat/recovery', authenticatedRouteLimiter, async (req, res) => {
+    if (!await checkProxyAuth(req, res)) {
+        return;
+    }
+    const recoveryPath = path.join(savePath, '__llm_recovery.json');
+    try {
+        await fs.unlink(recoveryPath);
+    } catch (e) { /* file doesn't exist, that's fine */ }
+    res.json({ ok: true });
+});
+
 // app.get('/api/password', async(req, res)=> {
 //     if(password === ''){
 //         res.send({status: 'unset'})
@@ -1391,6 +1458,19 @@ app.post('/api/write', authRouteLimiter, async (req, res, next) => {
 
     try {
         await fs.writeFile(path.join(savePath, filePath), fileContent);
+
+        // Invalidate memory cache when frontend POSTs DB updates
+        try {
+            const dbCache = require('./serverDbCache.cjs');
+            const decodedKey = Buffer.from(filePath, 'hex').toString('utf-8');
+            if (decodedKey === 'database/database.bin') {
+                dbCache.invalidateDb();
+            } else if (decodedKey.startsWith('remotes/') && decodedKey.endsWith('.local.bin')) {
+                const chaId = decodedKey.replace('remotes/', '').replace('.local.bin', '');
+                dbCache.invalidateChar(chaId);
+            }
+        } catch (e) { /* cache module not available */ }
+
         res.send({
             success: true
         });
@@ -1625,6 +1705,26 @@ try {
     registerInlayRoutes(app, password);
     console.log('[Server] Inlay storage routes registered');
 } catch (e) { console.log('[Server] Inlay routes not available:', e.message); }
+
+try {
+    const { registerImageJobRoutes } = require('./serverImageJob.cjs');
+    registerImageJobRoutes(app, password);
+    console.log('[Server] Image job routes registered');
+} catch (e) { console.log('[Server] serverImageJob.cjs not available:', e.message); }
+
+// Graceful shutdown: flush dirty cache before exit
+try {
+    const dbCache = require('./serverDbCache.cjs');
+    process.on('SIGTERM', () => {
+        console.log('[Server] SIGTERM — flushing cache...');
+        dbCache.shutdown();
+    });
+    process.on('SIGINT', () => {
+        console.log('[Server] SIGINT — flushing cache...');
+        dbCache.shutdown();
+        process.exit(0);
+    });
+} catch (e) { console.log('[Server] serverDbCache.cjs not available:', e.message); }
 
 async function startServer() {
     try {

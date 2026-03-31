@@ -872,6 +872,14 @@ async function requestClaudeHTTP(replacerURL:string, headers:{[key:string]:strin
                             } else if(cb?.type === 'thinking'){
                                 currentToolBlock = { type: 'thinking', thinking: '', signature: '' }
                                 streamContentBlocks.push(currentToolBlock)
+                            } else if(cb?.type === 'redacted_thinking'){
+                                currentToolBlock = { type: 'redacted_thinking', data: cb.data || '' }
+                                streamContentBlocks.push(currentToolBlock)
+                                if(!thinking){
+                                    text += "<Thoughts>\n"
+                                    thinking = true
+                                }
+                                text += '\n{{redacted_thinking}}\n'
                             } else {
                                 currentToolBlock = null
                             }
@@ -1012,6 +1020,7 @@ async function requestClaudeHTTP(replacerURL:string, headers:{[key:string]:strin
                     // Add assistant response — exclude empty thinking blocks (API rejects them)
                     const filteredBlocks = streamContentBlocks.filter(b =>
                         b.type === 'text' || b.type === 'tool_use' ||
+                        b.type === 'redacted_thinking' ||
                         (b.type === 'thinking' && b.thinking && b.thinking.length > 0)
                     )
                     messages.push({
@@ -1044,52 +1053,30 @@ async function requestClaudeHTTP(replacerURL:string, headers:{[key:string]:strin
                     }
                     messages.push(toolResponse)
                     body.messages = messages
-                    // Keep streaming for tool result continuation
+                    // Close thinking tag if still open before continuation
+                    if(thinking){
+                        text += "</Thoughts>\n\n"
+                        thinking = false
+                        controller.enqueue({ "0": text })
+                    }
+                    // Recursive requestClaudeHTTP handles further tool calls, thinking, errors
                     body.stream = true
-                    applyCopilotTaskHeaders(headers, replacerURL, copilotTaskId, true)
-
-                    const toolRes = await fetchNative(replacerURL, {
-                        body: JSON.stringify(body),
-                        headers: headers,
-                        method: "POST",
-                        chatId: arg.chatId,
-                        signal: arg.abortSignal,
-                        interceptor: 'anthropic_streaming_tool_result'
-                    })
-
-                    if(toolRes.status !== 200){
-                        controller.enqueue({ "0": text + '\nTool result request failed: ' + toolRes.status })
-                    } else {
-                        // Pipe the streaming response through the same controller
-                        const toolReader = toolRes.body.getReader()
-                        let toolParserData = ''
-                        let toolText = text
-                        let toolThinking = false
-                        while(true){
-                            const {done: tDone, value: tValue} = await toolReader.read()
-                            if(tDone) break
-                            toolParserData += decoder.decode(tValue)
-                            const tParts = toolParserData.split('\n')
-                            for(let ti = 0; ti < tParts.length - 1; ti++){
-                                if(tParts[ti]?.startsWith('data: ')){
-                                    try {
-                                        const td = JSON.parse(tParts[ti].slice(6))
-                                        if(td?.type === 'content_block_delta'){
-                                            if(td?.delta?.type === 'text' || td.delta?.type === 'text_delta'){
-                                                if(toolThinking){ toolText += "</Thoughts>\n\n"; toolThinking = false }
-                                                toolText += td.delta?.text ?? ''
-                                            }
-                                            if(td?.delta?.type === 'thinking' || td.delta?.type === 'thinking_delta'){
-                                                if(!toolThinking){ toolText += "<Thoughts>\n"; toolThinking = true }
-                                                toolText += td.delta?.thinking ?? ''
-                                            }
-                                        }
-                                    } catch {}
-                                }
+                    try {
+                        const continuationResult = await requestClaudeHTTP(replacerURL, headers, body, arg, copilotTaskId)
+                        if(continuationResult.type === 'streaming'){
+                            const contReader = (continuationResult.result as ReadableStream).getReader()
+                            while(true){
+                                const {done: cDone, value: cValue} = await contReader.read()
+                                if(cDone) break
+                                controller.enqueue({ "0": text + ((cValue as any)?.["0"] ?? '') })
                             }
-                            toolParserData = tParts[tParts.length - 1]
-                            controller.enqueue({ "0": toolText })
+                        } else if(continuationResult.type === 'success'){
+                            controller.enqueue({ "0": text + continuationResult.result })
+                        } else {
+                            controller.enqueue({ "0": text + '\n[Tool continuation error: ' + continuationResult.result + ']' })
                         }
+                    } catch(e: any) {
+                        controller.enqueue({ "0": text + '\n[Stream error: ' + (e?.message || e) + ']' })
                     }
                 }
 

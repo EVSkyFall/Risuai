@@ -67,6 +67,21 @@ export async function importRegex(o?:customscript[]):Promise<customscript[]>{
 
 let bestMatchCache = new Map<string, string>()
 let processScriptCache = new Map<string, string>()
+const compiledRegexCache = new Map<string, RegExp>()
+
+function getCompiledRegex(pattern: string, flags: string): RegExp {
+    const key = pattern + '\0' + flags
+    let cached = compiledRegexCache.get(key)
+    if (!cached) {
+        cached = new RegExp(pattern, flags)
+        compiledRegexCache.set(key, cached)
+        if (compiledRegexCache.size > 500) {
+            compiledRegexCache.delete(compiledRegexCache.keys().next().value)
+        }
+    }
+    cached.lastIndex = 0
+    return cached
+}
 
 function generateScriptCacheKey(scripts: customscript[], data: string, mode: ScriptMode, chatID = -1, cbsConditions: CbsConditions = {}) {
     let hash = data + '|||' + mode + '|||';
@@ -178,7 +193,7 @@ export async function processScriptFull(char:character|groupChat|simpleCharacter
                 input = risuChatParser(input, { chatID: chatID, cbsConditions })
             }
 
-            const reg = new RegExp(input, flag)
+            const reg = getCompiledRegex(input, flag)
             if(outScript.startsWith('@@') || pscript.actions.length > 0){
                 if(reg.test(data)){
                     if(outScript.startsWith('@@emo ')){
@@ -245,7 +260,10 @@ export async function processScriptFull(char:character|groupChat|simpleCharacter
                         }
                     }
                     else{
-                        data = risuChatParser(data.replace(reg, outScript), { chatID: chatID, cbsConditions })
+                        const replacedData = data.replace(reg, outScript)
+                        data = /\{\{|\{#|</.test(outScript)
+                            ? risuChatParser(replacedData, { chatID: chatID, cbsConditions })
+                            : replacedData
                     }
                 }
                 else{
@@ -288,7 +306,10 @@ export async function processScriptFull(char:character|groupChat|simpleCharacter
                 }
             }
             else{
-                data = risuChatParser(data.replace(reg, outScript), { chatID: chatID, cbsConditions })
+                const replacedData = data.replace(reg, outScript)
+                data = /\{\{|\{#|</.test(outScript)
+                    ? risuChatParser(replacedData, { chatID: chatID, cbsConditions })
+                    : replacedData
             }
         }
     }

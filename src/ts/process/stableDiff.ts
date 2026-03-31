@@ -8,6 +8,8 @@ import type { OpenAIChat } from "./index.svelte"
 import { processZip } from "./processzip"
 import { keiServerURL } from "../kei/kei"
 import random from "lodash/random"
+import { isNodeServer } from "../platform"
+import { serverAsyncFetch } from "../chat/serverJobClient"
 
 export async function stableDiff(currentChar:character,prompt:string){
     let db = getDatabase()
@@ -64,13 +66,14 @@ export async function stableDiff(currentChar:character,prompt:string){
 export async function generateAIImage(genPrompt:string, currentChar:character, neg:string, returnSdData:string):Promise<string|false>{
     const db = getDatabase()
     console.log(db.sdProvider)
+    const imgFetch = isNodeServer ? serverAsyncFetch : globalFetch
     if(db.sdProvider === 'webui'){
 
 
         const uri = new URL(db.webUiUrl)
         uri.pathname = '/sdapi/v1/txt2img'
         try {
-            const da = await globalFetch(uri.toString(), {
+            const da = await imgFetch(uri.toString(), {
                 body: {
                     "width": db.sdConfig.width,
                     "height": db.sdConfig.height,
@@ -354,7 +357,7 @@ export async function generateAIImage(genPrompt:string, currentChar:character, n
            
         }
         try {
-            const da = await globalFetch(db.NAIImgUrl, reqlist)   
+            const da = await imgFetch(db.NAIImgUrl, reqlist)
 
             if(returnSdData === 'inlay'){
                 if(da.ok){
@@ -388,7 +391,7 @@ export async function generateAIImage(genPrompt:string, currentChar:character, n
         }
     }
     if(db.sdProvider === 'dalle'){
-        const da = await globalFetch("https://api.openai.com/v1/images/generations", {
+        const da = await imgFetch("https://api.openai.com/v1/images/generations", {
             body: {
                 "prompt": genPrompt,
                 "model": "dall-e-3",
@@ -589,7 +592,7 @@ export async function generateAIImage(genPrompt:string, currentChar:character, n
             db.account = JSON.parse(localStorage.getItem("fallbackRisuToken"))
             auth = db?.account?.token
         }
-        const da = await globalFetch(keiServerURL() + '/imaggen', {
+        const da = await imgFetch(keiServerURL() + '/imaggen', {
             body: {
                 "prompt": genPrompt,
             },
@@ -645,7 +648,7 @@ export async function generateAIImage(genPrompt:string, currentChar:character, n
             delete body.enable_safety_checker
         }
 
-        const res = await globalFetch('https://fal.run/' + model, {
+        const res = await imgFetch('https://fal.run/' + model, {
             headers: {
                 "Authorization": "Key " + token,
                 "Content-Type": "application/json"
@@ -701,7 +704,7 @@ export async function generateAIImage(genPrompt:string, currentChar:character, n
 
         const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:predict?key=${db.google.accessToken}`
 
-        const res = await globalFetch(url, {
+        const res = await imgFetch(url, {
             headers: {
                 "Content-Type": "application/json"
             },
@@ -750,7 +753,7 @@ export async function generateAIImage(genPrompt:string, currentChar:character, n
             headers["Authorization"] = "Bearer " + config.key
         }
 
-        const da = await globalFetch(config.url, {
+        const da = await imgFetch(config.url, {
             body: body,
             headers: headers
         })
@@ -828,7 +831,7 @@ export async function generateAIImage(genPrompt:string, currentChar:character, n
         try {
             // First: submit task
             const requestEndpoint = `https://api.wavespeed.ai/api/v3/${config.model}`
-            const requestResponse = await globalFetch(requestEndpoint, {
+            const requestResponse = await imgFetch(requestEndpoint, {
                 body: body,
                 headers: {
                     "Content-Type": "application/json",
@@ -866,7 +869,7 @@ export async function generateAIImage(genPrompt:string, currentChar:character, n
                     alertError(`Task timeout after ${MAX_WAIT_TIME / 1000}s`);
                     break;
                 }
-                const taskResponse = await globalFetch(taskEndpoint, {
+                const taskResponse = await imgFetch(taskEndpoint, {
                     method: 'GET',
                     headers: {
                         "Authorization": "Bearer " + config.key
@@ -906,7 +909,7 @@ export async function generateAIImage(genPrompt:string, currentChar:character, n
             }
 
             // Third: get result
-            const resultResponse = await globalFetch(resultEndpoint, {
+            const resultResponse = await imgFetch(resultEndpoint, {
                 method: 'GET',
                 headers: {
                     "Authorization": "Bearer " + config.key
