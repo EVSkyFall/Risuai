@@ -912,6 +912,9 @@ const reverseProxyFunc = async (req, res, next) => {
 
     }
     catch (err) {
+        if (err?.code === 'ERR_STREAM_PREMATURE_CLOSE') {
+            return;
+        }
         if (err?.name === 'AbortError') {
             if (!res.headersSent) {
                 res.status(504).send({
@@ -924,7 +927,15 @@ const reverseProxyFunc = async (req, res, next) => {
             }
             return;
         }
-        next(err);
+        const causeMsg = err?.cause?.message || err?.cause?.code || '';
+        console.error(`[Proxy] Fetch error: ${err.message}${causeMsg ? ' | cause: ' + causeMsg : ''}`);
+        if (!res.headersSent) {
+            res.status(502).json({
+                error: `Proxy fetch failed: ${err.message}${causeMsg ? ' (' + causeMsg + ')' : ''}`
+            });
+        } else {
+            try { res.end(); } catch (e) { /* ignore */ }
+        }
         return;
     } finally {
         timeout.cleanup();
@@ -1005,6 +1016,9 @@ const reverseProxyFunc_get = async (req, res, next) => {
         await pipeline(originalResponse.body, res);
     }
     catch (err) {
+        if (err?.code === 'ERR_STREAM_PREMATURE_CLOSE') {
+            return;
+        }
         if (err?.name === 'AbortError') {
             if (!res.headersSent) {
                 res.status(504).send({
@@ -1017,7 +1031,15 @@ const reverseProxyFunc_get = async (req, res, next) => {
             }
             return;
         }
-        next(err);
+        const causeMsg = err?.cause?.message || err?.cause?.code || '';
+        console.error(`[Proxy] Fetch error: ${err.message}${causeMsg ? ' | cause: ' + causeMsg : ''}`);
+        if (!res.headersSent) {
+            res.status(502).json({
+                error: `Proxy fetch failed: ${err.message}${causeMsg ? ' (' + causeMsg + ')' : ''}`
+            });
+        } else {
+            try { res.end(); } catch (e) { /* ignore */ }
+        }
         return;
     } finally {
         timeout.cleanup();

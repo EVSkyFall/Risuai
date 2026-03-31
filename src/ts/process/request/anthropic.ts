@@ -1059,19 +1059,20 @@ async function requestClaudeHTTP(replacerURL:string, headers:{[key:string]:strin
                         thinking = false
                         controller.enqueue({ "0": text })
                     }
-                    // Recursive requestClaudeHTTP handles further tool calls, thinking, errors
-                    body.stream = true
+                    // Use non-streaming for tool continuation to avoid ReadableStream race condition
+                    body.stream = false
                     try {
                         const continuationResult = await requestClaudeHTTP(replacerURL, headers, body, arg, copilotTaskId)
-                        if(continuationResult.type === 'streaming'){
+                        if(continuationResult.type === 'success'){
+                            controller.enqueue({ "0": text + continuationResult.result })
+                        } else if(continuationResult.type === 'streaming'){
+                            // Fallback: drain the stream synchronously
                             const contReader = (continuationResult.result as ReadableStream).getReader()
                             while(true){
                                 const {done: cDone, value: cValue} = await contReader.read()
                                 if(cDone) break
                                 controller.enqueue({ "0": text + ((cValue as any)?.["0"] ?? '') })
                             }
-                        } else if(continuationResult.type === 'success'){
-                            controller.enqueue({ "0": text + continuationResult.result })
                         } else {
                             controller.enqueue({ "0": text + '\n[Tool continuation error: ' + continuationResult.result + ']' })
                         }
