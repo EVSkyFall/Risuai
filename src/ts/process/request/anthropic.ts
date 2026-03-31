@@ -1030,15 +1030,52 @@ async function requestClaudeHTTP(replacerURL:string, headers:{[key:string]:strin
                     }
                     messages.push(toolResponse)
                     body.messages = messages
-                    body.stream = false
-                    arg.useStreaming = false
-                    // Recursion: send tool results (non-streaming)
-                    const toolResult = await requestClaudeHTTP(replacerURL, headers, body, arg, copilotTaskId)
-                    if(toolResult.type === 'success'){
-                        const prefix = text ? text + '\n\n' : ''
-                        controller.enqueue({ "0": prefix + toolResult.result })
-                    } else if(toolResult.type === 'fail'){
-                        controller.enqueue({ "0": text + '\nTool call failed: ' + toolResult.result })
+                    // Keep streaming for tool result continuation
+                    body.stream = true
+                    applyCopilotTaskHeaders(headers, replacerURL, copilotTaskId, true)
+
+                    const toolRes = await fetchNative(replacerURL, {
+                        body: JSON.stringify(body),
+                        headers: headers,
+                        method: "POST",
+                        chatId: arg.chatId,
+                        signal: arg.abortSignal,
+                        interceptor: 'anthropic_streaming_tool_result'
+                    })
+
+                    if(toolRes.status !== 200){
+                        controller.enqueue({ "0": text + '\nTool result request failed: ' + toolRes.status })
+                    } else {
+                        // Pipe the streaming response through the same controller
+                        const toolReader = toolRes.body.getReader()
+                        let toolParserData = ''
+                        let toolText = text
+                        let toolThinking = false
+                        while(true){
+                            const {done: tDone, value: tValue} = await toolReader.read()
+                            if(tDone) break
+                            toolParserData += decoder.decode(tValue)
+                            const tParts = toolParserData.split('\n')
+                            for(let ti = 0; ti < tParts.length - 1; ti++){
+                                if(tParts[ti]?.startsWith('data: ')){
+                                    try {
+                                        const td = JSON.parse(tParts[ti].slice(6))
+                                        if(td?.type === 'content_block_delta'){
+                                            if(td?.delta?.type === 'text' || td.delta?.type === 'text_delta'){
+                                                if(toolThinking){ toolText += "</Thoughts>\n\n"; toolThinking = false }
+                                                toolText += td.delta?.text ?? ''
+                                            }
+                                            if(td?.delta?.type === 'thinking' || td.delta?.type === 'thinking_delta'){
+                                                if(!toolThinking){ toolText += "<Thoughts>\n"; toolThinking = true }
+                                                toolText += td.delta?.thinking ?? ''
+                                            }
+                                        }
+                                    } catch {}
+                                }
+                            }
+                            toolParserData = tParts[tParts.length - 1]
+                            controller.enqueue({ "0": toolText })
+                        }
                     }
                 }
 
