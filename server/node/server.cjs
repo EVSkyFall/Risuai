@@ -764,28 +764,27 @@ const reverseProxyFunc = async (req, res, next) => {
     }
     const timeoutMs = getRequestTimeoutMs(req.headers['risu-timeout-ms']);
     const timeout = createTimeoutController(timeoutMs);
+    const isStreamingChat = !!(
+        (req.body && req.body.stream === true &&
+            (urlParam.includes('/chat/completions') || urlParam.includes('/v1/messages'))) ||
+        urlParam.includes(':streamGenerateContent')
+    );
+    const teeCapture = req.headers['x-risu-tee-capture'] === 'true';
+
+    console.log(`[Proxy] ${req.method} ${urlParam.substring(0, 100)} | stream=${req.body?.stream} isStreamingChat=${isStreamingChat} teeCapture=${teeCapture}`);
+
+    let clientConnected = true;
+    res.on('close', () => { clientConnected = false; });
+    res.on('error', () => { clientConnected = false; });
+
     let originalResponse;
     try {
-        // make request to original server
-        const isMessages = urlParam?.includes('/v1/messages');
-        if (isMessages) {
-            const msgCount = req.body?.messages?.length || 0;
-            const hasTools = !!req.body?.tools;
-            const stream = req.body?.stream;
-            const lastRole = req.body?.messages?.[msgCount-1]?.role || '?';
-            console.log(`[Proxy] ${req.method} ${urlParam} | msgs=${msgCount} lastRole=${lastRole} tools=${hasTools} stream=${stream}`);
-        } else {
-            console.log(`[Proxy] ${req.method} ${urlParam}`);
-        }
         originalResponse = await fetch(urlParam, {
             method: req.method,
             headers: header,
             body: JSON.stringify(req.body),
             signal: timeout.signal
         });
-        // get response body as stream
-        const originalBody = originalResponse.body;
-        // get response headers
         const head = new Headers(originalResponse.headers);
         head.delete('content-security-policy');
         head.delete('content-security-policy-report-only');
@@ -793,15 +792,100 @@ const reverseProxyFunc = async (req, res, next) => {
         head.delete('Cache-Control');
         head.delete('Content-Encoding');
         const headObj = {};
-        for (let [k, v] of head) {
-            headObj[k] = v;
-        }
-        // send response headers to client
+        for (let [k, v] of head) { headObj[k] = v; }
         res.header(headObj);
-        // send response status to client
         res.status(originalResponse.status);
-        // send response body to client
-        await pipeline(originalResponse.body, res);
+
+        if ((isStreamingChat || teeCapture) && originalResponse.ok && originalResponse.body) {
+            // ═══ TEE MODE: Capture LLM response server-side ═══
+            const serverBuffer = [];
+            res.flushHeaders();
+
+            const reader = originalResponse.body.getReader();
+            console.log('[Proxy TEE] Starting stream read loop');
+            try {
+                while (true) {
+                    const { done, value } = await reader.read();
+                    if (done) {
+                        console.log(`[Proxy TEE] Stream done. Total chunks: ${serverBuffer.length}`);
+                        break;
+                    }
+                    serverBuffer.push(Buffer.from(value));
+
+                    if (clientConnected && !res.destroyed && !res.writableEnded) {
+                        try { res.write(Buffer.from(value)); } catch (writeErr) { clientConnected = false; }
+                    }
+                }
+            } catch (readErr) {
+                console.error('[Proxy] Stream read error:', readErr.message);
+            }
+
+            if (clientConnected && !res.destroyed && !res.writableEnded) {
+                try { res.end(); } catch (e) { /* ignore */ }
+            }
+
+            console.log(`[Proxy TEE] Streaming complete. clientConnected=${clientConnected}`);
+
+            // Parse and save captured response
+            const fullBuffer = Buffer.concat(serverBuffer).toString('utf-8');
+            const extractedText = extractSSEContent(fullBuffer);
+
+            if (extractedText && extractedText.length > 0) {
+                const recoveryPath = path.join(savePath, '__llm_recovery.json');
+                try {
+                    await fs.writeFile(recoveryPath, JSON.stringify({
+                        text: extractedText,
+                        model: req.body?.model || 'unknown',
+                        time: Date.now(),
+                        clientConnected,
+                        resDestroyed: res.destroyed,
+                    }), 'utf-8');
+                    console.log(`[Proxy TEE] Saved LLM recovery: ${extractedText.length} chars`);
+                } catch (saveErr) {
+                    console.error('[Proxy] Recovery save failed:', saveErr.message);
+                }
+            }
+        } else if (teeCapture && originalResponse.ok && originalResponse.body) {
+            // Non-streaming TEE
+            const chunks = [];
+            const reader = originalResponse.body.getReader();
+            try {
+                while (true) {
+                    const { done, value } = await reader.read();
+                    if (done) break;
+                    chunks.push(Buffer.from(value));
+                }
+            } catch (readErr) { console.error('[Proxy] Non-streaming read error:', readErr.message); }
+            const fullBuffer = Buffer.concat(chunks);
+
+            let recoveryText = '';
+            try {
+                const json = JSON.parse(fullBuffer.toString('utf-8'));
+                recoveryText = json.choices?.[0]?.message?.content || '';
+                if (!recoveryText && json.content) {
+                    recoveryText = json.content.filter(b => b.type === 'text').map(b => b.text).join('');
+                }
+                if (!recoveryText && json.candidates?.[0]?.content?.parts) {
+                    recoveryText = json.candidates[0].content.parts.filter(p => p.text && !p.thought).map(p => p.text).join('');
+                }
+            } catch (e) { recoveryText = fullBuffer.toString('utf-8'); }
+
+            if (recoveryText && recoveryText.length > 0) {
+                const recoveryPath = path.join(savePath, '__llm_recovery.json');
+                try {
+                    await fs.writeFile(recoveryPath, JSON.stringify({
+                        text: recoveryText, model: req.body?.model || 'unknown', time: Date.now(), clientConnected, nonStreaming: true
+                    }), 'utf-8');
+                    console.log(`[Proxy TEE] Saved non-streaming recovery: ${recoveryText.length} chars`);
+                } catch (saveErr) { console.error('[Proxy] Non-streaming recovery save failed:', saveErr.message); }
+            }
+
+            if (clientConnected && !res.destroyed && !res.writableEnded) { res.send(fullBuffer); }
+        } else if (originalResponse.body) {
+            await pipeline(originalResponse.body, res);
+        } else {
+            res.end();
+        }
 
     }
     catch (err) {
@@ -822,6 +906,32 @@ const reverseProxyFunc = async (req, res, next) => {
     } finally {
         timeout.cleanup();
     }
+}
+
+/**
+ * Extract text content from SSE stream data.
+ * Supports OpenAI, Anthropic Claude, and Google Gemini/Vertex AI formats.
+ */
+function extractSSEContent(sseData) {
+    let fullText = '';
+    const lines = sseData.split('\n');
+    for (const line of lines) {
+        const trimmed = line.trim();
+        if (!trimmed || trimmed === 'data: [DONE]') continue;
+        if (!trimmed.startsWith('data: ')) continue;
+        try {
+            const json = JSON.parse(trimmed.slice(6));
+            const delta = json.choices?.[0]?.delta?.content;
+            if (delta) { fullText += delta; continue; }
+            if (json.type === 'content_block_delta' && json.delta?.text) { fullText += json.delta.text; continue; }
+            const parts = json.candidates?.[0]?.content?.parts;
+            if (parts && Array.isArray(parts)) {
+                for (const part of parts) { if (part.text && !part.thought) fullText += part.text; }
+                continue;
+            }
+        } catch (e) {}
+    }
+    return fullText;
 }
 
 const reverseProxyFunc_get = async (req, res, next) => {
