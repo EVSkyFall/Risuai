@@ -995,10 +995,14 @@ async function requestClaudeHTTP(replacerURL:string, headers:{[key:string]:strin
                 // Handle tool_use in streaming: execute tools and send results back
                 if(streamStopReason === 'tool_use' && streamToolUseBlocks.length > 0){
                     const messages: Claude3ExtendedChat[] = body.messages
-                    // Add assistant response with all content blocks
+                    // Add assistant response — exclude empty thinking blocks (API rejects them)
+                    const filteredBlocks = streamContentBlocks.filter(b =>
+                        b.type === 'text' || b.type === 'tool_use' ||
+                        (b.type === 'thinking' && b.thinking && b.thinking.length > 0)
+                    )
                     messages.push({
                         role: 'assistant',
-                        content: streamContentBlocks
+                        content: filteredBlocks
                     })
                     // Build tool results
                     const toolResponse: Claude3Chat = { role: 'user', content: [] }
