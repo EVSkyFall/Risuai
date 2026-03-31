@@ -20,7 +20,7 @@ export class NodeStorage{
         }
         const payload = {
             iat: date,
-            exp: date + 5 * 60, //5 minutes expiration
+            exp: date + 30 * 60, //30 minutes expiration
             pub: await crypto.subtle.exportKey('jwk', keyPair.publicKey)
         }
         const sig = await crypto.subtle.sign(
