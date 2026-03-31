@@ -733,6 +733,8 @@ async function checkAuth(req, res, returnOnlyStatus = false) {
 
 const reverseProxyFunc = async (req, res, next) => {
     if (!await checkProxyAuth(req, res)) {
+        const url = req.headers['risu-url'] ? decodeURIComponent(req.headers['risu-url']) : '?';
+        console.log(`[Proxy] AUTH FAILED for ${req.method} ${url.substring(0, 60)}`);
         return;
     }
 
@@ -765,7 +767,16 @@ const reverseProxyFunc = async (req, res, next) => {
     let originalResponse;
     try {
         // make request to original server
-        console.log(`[Proxy] ${req.method} ${urlParam}`);
+        const isMessages = urlParam?.includes('/v1/messages');
+        if (isMessages) {
+            const msgCount = req.body?.messages?.length || 0;
+            const hasTools = !!req.body?.tools;
+            const stream = req.body?.stream;
+            const lastRole = req.body?.messages?.[msgCount-1]?.role || '?';
+            console.log(`[Proxy] ${req.method} ${urlParam} | msgs=${msgCount} lastRole=${lastRole} tools=${hasTools} stream=${stream}`);
+        } else {
+            console.log(`[Proxy] ${req.method} ${urlParam}`);
+        }
         originalResponse = await fetch(urlParam, {
             method: req.method,
             headers: header,

@@ -856,44 +856,58 @@ async function requestClaudeHTTP(replacerURL:string, headers:{[key:string]:strin
                         const parsedData = JSON.parse(e)
 
                         if(parsedData?.type === 'content_block_start'){
-                            if(parsedData?.content_block?.type === 'tool_use'){
+                            const cb = parsedData?.content_block
+                            if(cb?.type === 'tool_use'){
                                 currentToolBlock = {
                                     type: 'tool_use',
-                                    id: parsedData.content_block.id,
-                                    name: parsedData.content_block.name,
-                                    input: {}
+                                    id: cb.id,
+                                    name: cb.name,
+                                    input: {},
+                                    _inputJson: ''
                                 }
+                                streamContentBlocks.push(currentToolBlock)
+                            } else if(cb?.type === 'text'){
+                                currentToolBlock = { type: 'text', text: '' }
+                                streamContentBlocks.push(currentToolBlock)
+                            } else if(cb?.type === 'thinking'){
+                                currentToolBlock = { type: 'thinking', thinking: '', signature: '' }
                                 streamContentBlocks.push(currentToolBlock)
                             } else {
                                 currentToolBlock = null
-                                if(parsedData?.content_block){
-                                    streamContentBlocks.push(parsedData.content_block)
-                                }
                             }
                         }
 
                         if(parsedData?.type === 'content_block_delta'){
-                            if(parsedData?.delta?.type === 'input_json_delta' && currentToolBlock){
-                                // Accumulate tool input JSON
-                                currentToolBlock._inputJson = (currentToolBlock._inputJson || '') + (parsedData.delta.partial_json || '')
+                            const dt = parsedData?.delta
+                            if(dt?.type === 'input_json_delta' && currentToolBlock?.type === 'tool_use'){
+                                currentToolBlock._inputJson += (dt.partial_json || '')
                             }
-                            else if(parsedData?.delta?.type === 'text' || parsedData.delta?.type === 'text_delta'){
+                            else if(dt?.type === 'text' || dt?.type === 'text_delta'){
+                                if(currentToolBlock?.type === 'text'){
+                                    currentToolBlock.text += dt?.text ?? ''
+                                }
                                 if(thinking){
                                     text += "</Thoughts>\n\n"
                                     thinking = false
                                 }
-                                text += parsedData.delta?.text ?? ''
+                                text += dt?.text ?? ''
                             }
-
-                            if(parsedData?.delta?.type === 'thinking' || parsedData.delta?.type === 'thinking_delta'){
+                            else if(dt?.type === 'thinking' || dt?.type === 'thinking_delta'){
+                                if(currentToolBlock?.type === 'thinking'){
+                                    currentToolBlock.thinking += dt?.thinking ?? ''
+                                }
                                 if(!thinking){
                                     text += "<Thoughts>\n"
                                     thinking = true
                                 }
-                                text += parsedData.delta?.thinking ?? ''
+                                text += dt?.thinking ?? ''
                             }
-
-                            if(parsedData?.delta?.type === 'redacted_thinking'){
+                            else if(dt?.type === 'signature_delta'){
+                                if(currentToolBlock?.type === 'thinking'){
+                                    currentToolBlock.signature = dt?.signature ?? ''
+                                }
+                            }
+                            else if(dt?.type === 'redacted_thinking'){
                                 if(!thinking){
                                     text += "<Thoughts>\n"
                                     thinking = true
@@ -903,7 +917,7 @@ async function requestClaudeHTTP(replacerURL:string, headers:{[key:string]:strin
                         }
 
                         if(parsedData?.type === 'content_block_stop'){
-                            if(currentToolBlock && currentToolBlock._inputJson){
+                            if(currentToolBlock?.type === 'tool_use' && currentToolBlock._inputJson){
                                 try { currentToolBlock.input = JSON.parse(currentToolBlock._inputJson) } catch {}
                                 delete currentToolBlock._inputJson
                                 streamToolUseBlocks.push(currentToolBlock)
